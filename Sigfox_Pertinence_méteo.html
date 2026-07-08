@@ -359,21 +359,33 @@ function findTimestampKey(data){
     ||keys.find(k=>k.toLowerCase().includes("date"))
     ||keys.find(k=>k.toLowerCase().includes("time"))||null;
 }
-// Parse one cell into a Date, handling ISO/text, epoch seconds, epoch millis and Excel serial dates
+// Parse one cell into a Date. Gère en priorité le format français JOUR/MOIS
+// (jj/mm, jj/mm/aaaa, avec heure optionnelle), puis epoch s/ms, série Excel, ISO/texte.
 function parseCellDate(ts){
   if(ts==null||ts==="")return null;
   if(ts instanceof Date)return isNaN(ts.getTime())?null:ts;
-  let d;
   const s=String(ts).trim();
+  const valid=d=>(d&&!isNaN(d.getTime()))?d:null;
+  // Format européen jour d'abord : jj/mm[/aaaa] (ou - ou .) avec heure optionnelle
+  const m=s.match(/^(\d{1,2})[\/\-.](\d{1,2})(?:[\/\-.](\d{2,4}))?(?:[ T](\d{1,2}):(\d{2})(?::(\d{2}))?)?/);
+  if(m){
+    const dd=parseInt(m[1],10),mm=parseInt(m[2],10);
+    let yy=m[3]?parseInt(m[3],10):new Date().getFullYear();
+    if(m[3]&&m[3].length===2)yy+=2000;
+    if(mm>=1&&mm<=12&&dd>=1&&dd<=31){
+      const hh=m[4]?parseInt(m[4],10):0,mi=m[5]?parseInt(m[5],10):0,se=m[6]?parseInt(m[6],10):0;
+      return valid(new Date(yy,mm-1,dd,hh,mi,se));
+    }
+  }
+  // Valeurs numériques : epoch (s/ms) ou date série Excel
   if(typeof ts==="number"||/^\d+(\.\d+)?$/.test(s)){
     const n=typeof ts==="number"?ts:parseFloat(s);
-    if(n>1e11)d=new Date(n);                              // epoch en millisecondes
-    else if(n>1e5)d=new Date(n*1000);                     // epoch en secondes
-    else d=new Date(Math.round((n-25569)*86400000));      // date série Excel
-  }else{
-    d=new Date(s);
+    if(n>1e11)return valid(new Date(n));                        // epoch millisecondes
+    if(n>1e5)return valid(new Date(n*1000));                    // epoch secondes
+    return valid(new Date(Math.round((n-25569)*86400000)));     // date série Excel
   }
-  return (d&&!isNaN(d.getTime()))?d:null;
+  // Sinon : ISO / autre texte reconnu par le navigateur
+  return valid(new Date(s));
 }
 // Latest date found in the timestamp column, or null
 function maxTimestampDate(data,tsKey){
@@ -724,10 +736,8 @@ async function runAnalysis(){
   resultData=null;resultRecap=null;viewLevel=null;
 
   try{
+    // La date de l'analyse vient de la colonne Timestamp du fichier (calculée plus bas)
     currentAnalysisDate=null;
-    // Extract date from new data file name (jjmm → jj-mm)
-    currentAnalysisDate=extractDateFromFilename(file1?.name);
-    if(currentAnalysisDate)addLog("Date nouvelle analyse détectée : "+currentAnalysisDate);
     addLog("Lecture du fichier de données Sigfox...");
     let data=await readXlsx(file1);
     addLog("  "+data.length+" lignes chargées","success");
@@ -779,10 +789,9 @@ async function runAnalysis(){
     if(maxTs){
       currentAnalysisDate=dateLabelFromDate(maxTs);
       addLog("Date de l'analyse (Timestamp) : "+currentAnalysisDate,"success");
-    }else if(currentAnalysisDate){
-      addLog("Aucune date exploitable dans le Timestamp — date du nom de fichier utilisée : "+currentAnalysisDate,"warn");
     }else{
-      addLog("Aucune date trouvée (Timestamp/nom de fichier) — la date du jour sera utilisée à l'enregistrement","warn");
+      currentAnalysisDate=null;
+      addLog(tsKey?"Colonne « "+tsKey+" » trouvée mais aucune date exploitable — la date du jour sera utilisée":"Aucune colonne Timestamp trouvée — la date du jour sera utilisée","warn");
     }
 
     // ── Weather ──
