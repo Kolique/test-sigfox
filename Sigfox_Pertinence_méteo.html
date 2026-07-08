@@ -236,11 +236,23 @@ tr.total{background:#f9fafb}tr.total td{font-weight:700;border-top:2px solid #e5
   <div class="card">
     <div class="steps" id="stepsBar"></div>
     <div class="section visible" id="section-0">
-      <h2>Import des fichiers</h2>
-      <p class="subtitle">Chargez les deux fichiers Excel nécessaires à l'analyse.</p>
+      <h2>Import des données</h2>
+      <p class="subtitle">Sélectionnez une fois votre dossier d'exports et le référentiel, puis choisissez l'antenne à analyser.</p>
       <div class="file-grid">
-        <div class="file-drop" id="drop1" onclick="document.getElementById('input1').click()"><input type="file" id="input1" accept=".xlsx"/><div class="icon">&#128196;</div><div class="label">Données Sigfox</div><div class="hint">Fichier contenant Device ID, Station ID, RSSI</div><div class="filename" id="fname1"></div></div>
-        <div class="file-drop" id="drop2" onclick="document.getElementById('input2').click()"><input type="file" id="input2" accept=".xlsx"/><div class="icon">&#128196;</div><div class="label">Référentiel Devices</div><div class="hint">Fichier contenant la colonne Id Sigfox</div><div class="filename" id="fname2"></div></div>
+        <div class="file-drop" id="dropFolder" onclick="document.getElementById('inputFolder').click()"><input type="file" id="inputFolder" webkitdirectory directory multiple/><div class="icon">&#128193;</div><div class="label">Dossier des exports</div><div class="hint">Contient les fichiers export-base-station-…-messages.csv</div><div class="filename" id="fnameFolder"></div></div>
+        <div class="file-drop" id="drop2" onclick="document.getElementById('input2').click()"><input type="file" id="input2" accept=".xlsx,.csv"/><div class="icon">&#128196;</div><div class="label">Référentiel Devices</div><div class="hint">Colonne Id Sigfox — à charger une seule fois</div><div class="filename" id="fname2"></div></div>
+      </div>
+      <div class="config-section" id="antennaPickWrap" style="display:none;margin-top:26px">
+        <label class="config-label">Antenne à analyser — <span id="detectedCount">0</span> disponible(s)</label>
+        <input class="config-input-text" id="antennaSearch" placeholder="Tapez un ID d'antenne, ex : DD12" autocomplete="off" style="width:300px"/>
+        <div class="config-hint" id="antennaPickHint">Le fichier correspondant est chargé automatiquement.</div>
+        <div class="ant-list" id="detectedAntennas" style="margin-top:14px"></div>
+      </div>
+      <div style="margin-top:18px">
+        <a onclick="toggleManualData()" style="font-size:12px;color:#2563eb;cursor:pointer;text-decoration:underline">Ou charger un fichier de données manuellement</a>
+        <div id="manualDataWrap" style="display:none;margin-top:12px;max-width:420px">
+          <div class="file-drop" id="drop1" onclick="document.getElementById('input1').click()"><input type="file" id="input1" accept=".xlsx,.csv"/><div class="icon">&#128196;</div><div class="label">Données Sigfox (manuel)</div><div class="hint">Device ID, Station ID, RSSI</div><div class="filename" id="fname1"></div></div>
+        </div>
       </div>
       <div class="btn-row-end"><button class="btn btn-primary" id="btnNext0" disabled onclick="goStep(1)">Continuer</button></div>
     </div>
@@ -309,6 +321,8 @@ let currentStep=0,file1=null,file2=null,currentAnalysisDate=null,resultData=null
 const STEP_NAMES=["Import","Paramètres","Traitement","Résultats"],THRESHOLD_NUL=-130;
 const DEFAULT_ANTENNAS=["96B2","6E34","7602","D8CF","6B67","52A6","8F4F","99C2","6A0A","2A73","700B","6B4C","8CE8","7023","DD13","8F69","A63D","A63C","CE7E","DD15","DD12","B7DE","8F51","886D","9938","A630","89FE","88ED","CEC3","96BF","89B0","B373","CA0D","32D4","98EA","15352","89BE","6149","C9EA","DC22","96EC","886F","DCBB","A56F","DD14","CECC","DC0E","6AFD","B36F","D824","96C3","C9EE","A640","9AD3","D8E1","1078E","CEA4","10797","DCE9","10FDB","D8E2","85AA","A62C","0731","8F64","65DD","CF64"];
 let antennas=[...DEFAULT_ANTENNAS];
+let folderFiles={},selectedAntennaId=null;
+const DATA_FILE_RE=/export-base-station-(.+?)-messages\.csv$/i;
 const COLS={sid1:"Station ID1 (Receiver info)",rssi1:"RSSI1 (Receiver info)",sid2:"Station ID2 (Receiver info)",rssi2:"RSSI2 (Receiver info)",sid3:"Station ID3 (Receiver info)",rssi3:"RSSI3 (Receiver info)",sid4:"Station ID4 (Receiver info)",rssi4:"RSSI4 (Receiver info)"};
 const ORDER_LEVELS=["Indispensable","Pertinence +++","Pertinence ++","Pertinence +","Non Pertinent","Pertinence à déterminer"];
 const LEVEL_TO_SHEET={"Indispensable":"Indispensable","Pertinence +++":"Pertinence_PLUSPLUSPLUS","Pertinence ++":"Pertinence_PLUSPLUS","Pertinence +":"Pertinence_PLUS","Non Pertinent":"Non_Pertinent","Pertinence à déterminer":"A_determiner"};
@@ -416,6 +430,44 @@ function renderSteps(){const bar=document.getElementById("stepsBar");bar.innerHT
 function goStep(s){currentStep=s;renderSteps();for(let i=0;i<4;i++)document.getElementById("section-"+i).classList.toggle("visible",i===s)}
 function setupFileDrop(dropId,inputId,fnameId,num){const drop=document.getElementById(dropId),input=document.getElementById(inputId);drop.addEventListener("dragover",e=>{e.preventDefault();drop.classList.add("dragover")});drop.addEventListener("dragleave",()=>drop.classList.remove("dragover"));drop.addEventListener("drop",e=>{e.preventDefault();drop.classList.remove("dragover");if(e.dataTransfer.files[0])handleFile(e.dataTransfer.files[0],num,drop,fnameId)});input.addEventListener("change",e=>{if(e.target.files[0])handleFile(e.target.files[0],num,drop,fnameId)})}
 function handleFile(f,num,drop,fnameId){if(num===1)file1=f;else file2=f;drop.classList.add("has-file");drop.querySelector(".icon").innerHTML="&#10004;";document.getElementById(fnameId).textContent=f.name;document.getElementById("btnNext0").disabled=!(file1&&file2)}
+
+// ── Folder mode: pick a folder once, then load a station file by antenna ID ──
+function setupFolderPicker(){
+  const input=document.getElementById("inputFolder");
+  if(!input)return;
+  input.addEventListener("change",e=>{
+    const files=Array.from(e.target.files||[]);
+    folderFiles={};
+    files.forEach(f=>{const m=f.name.match(DATA_FILE_RE);if(m)folderFiles[m[1].trim().toUpperCase()]=f});
+    const ids=Object.keys(folderFiles);
+    const drop=document.getElementById("dropFolder"),fn=document.getElementById("fnameFolder");
+    if(ids.length){drop.classList.add("has-file");drop.querySelector(".icon").innerHTML="&#10004;";fn.textContent=ids.length+" antenne"+(ids.length>1?"s":"")+" détectée"+(ids.length>1?"s":"")}
+    else{drop.classList.remove("has-file");drop.querySelector(".icon").innerHTML="&#128193;";fn.textContent="Aucun fichier « export-base-station-…-messages.csv » trouvé"}
+    document.getElementById("detectedCount").textContent=ids.length;
+    document.getElementById("antennaPickWrap").style.display=ids.length?"block":"none";
+    selectedAntennaId=null;
+    renderDetectedAntennas("");
+  });
+}
+function renderDetectedAntennas(filter){
+  const wrap=document.getElementById("detectedAntennas");if(!wrap)return;
+  const f=(filter||"").trim().toUpperCase();
+  const ids=Object.keys(folderFiles).sort();
+  const shown=f?ids.filter(id=>id.includes(f)):ids;
+  wrap.innerHTML=shown.length
+    ?shown.map(id=>`<div class="ant-card${id===selectedAntennaId?' active':''}" onclick="selectAntenna('${id}')"><div class="ant-card-id">${id}</div></div>`).join("")
+    :'<div style="font-size:12px;color:#9ca3af;padding:8px">Aucune antenne ne correspond à « '+f+' ».</div>';
+}
+function selectAntenna(id){
+  id=String(id).trim().toUpperCase();
+  const f=folderFiles[id];if(!f)return;
+  selectedAntennaId=id;file1=f;
+  renderDetectedAntennas(document.getElementById("antennaSearch")?.value||"");
+  const hint=document.getElementById("antennaPickHint");if(hint)hint.innerHTML="✓ <strong>"+id+"</strong> sélectionnée — "+f.name;
+  const t=document.getElementById("targetInput");if(t)t.value=id;
+  document.getElementById("btnNext0").disabled=!(file1&&file2);
+}
+function toggleManualData(){const w=document.getElementById("manualDataWrap");if(w)w.style.display=w.style.display==="none"?"block":"none"}
 function readXlsx(file){return new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=e=>{try{const wb=XLSX.read(new Uint8Array(e.target.result),{type:"array"});resolve(XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{defval:""}))}catch(err){reject(err)}};reader.onerror=()=>reject(new Error("Erreur lecture"));reader.readAsArrayBuffer(file)})}
 
 // Extract jjmm date from filename end (before extension) → returns "jj-mm" or null
@@ -775,7 +827,19 @@ async function exportExcel(){
   saveAs(new Blob([buffer],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}),"donnees_avec_pertinence.xlsx");
 }
 
-function resetAll(){file1=null;file2=null;currentAnalysisDate=null;resultData=null;resultRecap=null;viewLevel=null;weatherData=null;["drop1","drop2"].forEach(id=>{const el=document.getElementById(id);if(el){el.classList.remove("has-file");el.querySelector(".icon").innerHTML="&#128196;"}});["fname1","fname2"].forEach(id=>{const el=document.getElementById(id);if(el)el.textContent=""});["input1","input2"].forEach(id=>{const el=document.getElementById(id);if(el)el.value=""});document.getElementById("btnNext0").disabled=true;document.getElementById("weatherSection").innerHTML="";const sb=document.getElementById("btnSaveHist");if(sb){sb.classList.remove("saved");sb.disabled=false;sb.innerHTML='<span class="saved-check">✓ </span>💾 Sauvegarder dans l\'historique'}goStep(0)}
+function resetAll(){file1=null;selectedAntennaId=null;currentAnalysisDate=null;resultData=null;resultRecap=null;viewLevel=null;weatherData=null;
+  // On conserve le dossier et le référentiel chargés pour enchaîner sur une autre antenne
+  const d1=document.getElementById("drop1");if(d1){d1.classList.remove("has-file");const ic=d1.querySelector(".icon");if(ic)ic.innerHTML="&#128196;"}
+  const fn1=document.getElementById("fname1");if(fn1)fn1.textContent="";
+  const in1=document.getElementById("input1");if(in1)in1.value="";
+  const asEl=document.getElementById("antennaSearch");if(asEl)asEl.value="";
+  const hint=document.getElementById("antennaPickHint");if(hint)hint.textContent="Le fichier correspondant est chargé automatiquement.";
+  renderDetectedAntennas("");
+  document.getElementById("btnNext0").disabled=!(file1&&file2);
+  document.getElementById("weatherSection").innerHTML="";
+  const sb=document.getElementById("btnSaveHist");if(sb){sb.classList.remove("saved");sb.disabled=false;sb.innerHTML='<span class="saved-check">✓ </span>💾 Sauvegarder dans l\'historique'}
+  goStep(0);
+}
 // ═══════════════════════════════════════════════════
 // HISTORY SYSTEM — Shared JSON file + localStorage cache
 // ═══════════════════════════════════════════════════
@@ -1458,6 +1522,12 @@ document.addEventListener("DOMContentLoaded",()=>{
   renderSteps();
   setupFileDrop("drop1","input1","fname1",1);
   setupFileDrop("drop2","input2","fname2",2);
+  setupFolderPicker();
+  const asEl=document.getElementById("antennaSearch");
+  if(asEl){
+    asEl.addEventListener("input",e=>renderDetectedAntennas(e.target.value));
+    asEl.addEventListener("keydown",e=>{if(e.key==="Enter"){e.preventDefault();const v=e.target.value.trim().toUpperCase();if(folderFiles[v]){selectAntenna(v)}else{const mm=Object.keys(folderFiles).filter(id=>id.includes(v));if(mm.length===1)selectAntenna(mm[0])}}});
+  }
   renderTags();
   document.getElementById("tagInput").addEventListener("keydown",e=>{if(e.key==="Enter"){e.preventDefault();addTag()}});
   // Populate contract selector from CONTRACTS constant
