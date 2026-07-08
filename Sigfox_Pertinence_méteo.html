@@ -248,6 +248,11 @@ tr.total{background:#f9fafb}tr.total td{font-weight:700;border-top:2px solid #e5
         <div class="config-hint" id="antennaPickHint">Le fichier correspondant est chargé automatiquement.</div>
         <div class="ant-list" id="detectedAntennas" style="margin-top:14px"></div>
       </div>
+      <div id="batchWrap" style="display:none;margin-top:16px;padding:14px 16px;background:#f5f3ff;border:1px solid #ddd6fe;border-radius:8px">
+        <div style="font-size:13px;color:#6d28d9;font-weight:700;margin-bottom:8px">Ou analyser tout le dossier d'un coup</div>
+        <button class="btn" id="btnBatch" onclick="runBatchAnalysis()" style="background:#7c3aed;color:#fff">⚡ Tout analyser (<span id="batchCount">0</span> antennes)</button>
+        <div class="config-hint" style="margin-top:6px">Le référentiel doit être chargé. La météo est ignorée en mode lot.</div>
+      </div>
       <div style="margin-top:18px">
         <a onclick="toggleManualData()" style="font-size:12px;color:#2563eb;cursor:pointer;text-decoration:underline">Ou charger un fichier de données manuellement</a>
         <div id="manualDataWrap" style="display:none;margin-top:12px;max-width:420px">
@@ -314,6 +319,7 @@ tr.total{background:#f9fafb}tr.total td{font-weight:700;border-top:2px solid #e5
       <div id="detailView"></div>
       <div class="btn-row-center"><button class="btn btn-ghost" onclick="resetAll()">Nouvelle analyse</button></div>
     </div>
+    <div class="section" id="section-4"></div>
   </div>
 </div>
 <script>
@@ -321,7 +327,7 @@ let currentStep=0,file1=null,file2=null,currentAnalysisDate=null,resultData=null
 const STEP_NAMES=["Import","Paramètres","Traitement","Résultats"],THRESHOLD_NUL=-130;
 const DEFAULT_ANTENNAS=["96B2","6E34","7602","D8CF","6B67","52A6","8F4F","99C2","6A0A","2A73","700B","6B4C","8CE8","7023","DD13","8F69","A63D","A63C","CE7E","DD15","DD12","B7DE","8F51","886D","9938","A630","89FE","88ED","CEC3","96BF","89B0","B373","CA0D","32D4","98EA","15352","89BE","6149","C9EA","DC22","96EC","886F","DCBB","A56F","DD14","CECC","DC0E","6AFD","B36F","D824","96C3","C9EE","A640","9AD3","D8E1","1078E","CEA4","10797","DCE9","10FDB","D8E2","85AA","A62C","0731","8F64","65DD","CF64"];
 let antennas=[...DEFAULT_ANTENNAS];
-let folderFiles={},selectedAntennaId=null;
+let folderFiles={},selectedAntennaId=null,batchResults=[];
 const DATA_FILE_RE=/export-base-station-(.+?)-messages\.csv$/i;
 const COLS={sid1:"Station ID1 (Receiver info)",rssi1:"RSSI1 (Receiver info)",sid2:"Station ID2 (Receiver info)",rssi2:"RSSI2 (Receiver info)",sid3:"Station ID3 (Receiver info)",rssi3:"RSSI3 (Receiver info)",sid4:"Station ID4 (Receiver info)",rssi4:"RSSI4 (Receiver info)"};
 const ORDER_LEVELS=["Indispensable","Pertinence +++","Pertinence ++","Pertinence +","Non Pertinent","Pertinence à déterminer"];
@@ -427,7 +433,7 @@ async function fetchWeather(city,endDate){
 
 // ── UI ──
 function renderSteps(){const bar=document.getElementById("stepsBar");bar.innerHTML="";STEP_NAMES.forEach((name,i)=>{const done=i<currentStep,active=i===currentStep,cls=done?"done":active?"active":"pending";let h=`<div class="step-item${i<STEP_NAMES.length-1?' expand':''}"><div class="step-circle ${cls}">${done?"&#10003;":i+1}</div><span class="step-label ${cls}">${name}</span>`;if(i<STEP_NAMES.length-1)h+=`<div class="step-line ${done?'done':'pending'}"></div>`;h+=`</div>`;bar.innerHTML+=h})}
-function goStep(s){currentStep=s;renderSteps();for(let i=0;i<4;i++)document.getElementById("section-"+i).classList.toggle("visible",i===s)}
+function goStep(s){currentStep=s;renderSteps();for(let i=0;i<4;i++)document.getElementById("section-"+i).classList.toggle("visible",i===s);const s4=document.getElementById("section-4");if(s4)s4.classList.remove("visible")}
 function setupFileDrop(dropId,inputId,fnameId,num){const drop=document.getElementById(dropId),input=document.getElementById(inputId);drop.addEventListener("dragover",e=>{e.preventDefault();drop.classList.add("dragover")});drop.addEventListener("dragleave",()=>drop.classList.remove("dragover"));drop.addEventListener("drop",e=>{e.preventDefault();drop.classList.remove("dragover");if(e.dataTransfer.files[0])handleFile(e.dataTransfer.files[0],num,drop,fnameId)});input.addEventListener("change",e=>{if(e.target.files[0])handleFile(e.target.files[0],num,drop,fnameId)})}
 function handleFile(f,num,drop,fnameId){if(num===1)file1=f;else file2=f;drop.classList.add("has-file");drop.querySelector(".icon").innerHTML="&#10004;";document.getElementById(fnameId).textContent=f.name;document.getElementById("btnNext0").disabled=!(file1&&file2)}
 
@@ -445,6 +451,8 @@ function setupFolderPicker(){
     else{drop.classList.remove("has-file");drop.querySelector(".icon").innerHTML="&#128193;";fn.textContent="Aucun fichier « export-base-station-…-messages.csv » trouvé"}
     document.getElementById("detectedCount").textContent=ids.length;
     document.getElementById("antennaPickWrap").style.display=ids.length?"block":"none";
+    document.getElementById("batchWrap").style.display=ids.length?"block":"none";
+    document.getElementById("batchCount").textContent=ids.length;
     selectedAntennaId=null;
     renderDetectedAntennas("");
   });
@@ -468,6 +476,120 @@ function selectAntenna(id){
   document.getElementById("btnNext0").disabled=!(file1&&file2);
 }
 function toggleManualData(){const w=document.getElementById("manualDataWrap");if(w)w.style.display=w.style.display==="none"?"block":"none"}
+
+// ── Batch mode: analyse every antenna file in the folder (weather ignored) ──
+async function runBatchAnalysis(){
+  if(!file2){alert("Chargez d'abord le référentiel Devices.");return}
+  const ids=Object.keys(folderFiles).sort();
+  if(!ids.length){alert("Aucun fichier antenne détecté dans le dossier.");return}
+  goStep(2);
+  clearConsole();batchResults=[];
+  document.getElementById("processTitle").textContent="Traitement par lot";
+  document.getElementById("processSub").textContent="Analyse de "+ids.length+" antennes…";
+  document.getElementById("processButtons").innerHTML="";
+  try{
+    addLog("Lecture du référentiel devices...");
+    const devices=await readXlsx(file2);
+    if(!devices[0]||!devices[0].hasOwnProperty("Id Sigfox"))throw new Error('Colonne "Id Sigfox" introuvable dans le référentiel');
+    const sigfoxIds=new Set(devices.map(d=>String(d["Id Sigfox"]).trim().toUpperCase()));
+    addLog("  "+devices.length+" devices chargés","success");
+    const ourSet=new Set(antennas.map(a=>a.toUpperCase()));
+    for(const id of ids){
+      addLog("── Antenne "+id+" ──");
+      try{
+        let data=await readXlsx(folderFiles[id]);
+        if(!data.length){addLog("  fichier vide, ignoré","warn");continue}
+        if(!data[0].hasOwnProperty("Device ID")){addLog("  colonne « Device ID » introuvable, ignorée","error");continue}
+        const missing=Object.values(COLS).filter(c=>!data[0].hasOwnProperty(c));
+        if(missing.length){addLog("  colonnes manquantes, ignorée : "+missing.join(", "),"error");continue}
+        data.forEach(row=>{const did=String(row["Device ID"]).trim();if(did.length>7)row["Device ID"]=did.substring(1)});
+        data=data.filter(row=>sigfoxIds.has(String(row["Device ID"]).trim().toUpperCase()));
+        const grouped={};
+        data.forEach(row=>{const key=String(row["Device ID"]).trim().toUpperCase();(grouped[key]||(grouped[key]=[])).push(row)});
+        data=Object.values(grouped).map(rows=>rows.length===1?rows[0]:rows.reduce((best,row)=>{const rB=normRSSI(best[COLS.rssi1]),rR=normRSSI(row[COLS.rssi1]);if(rR==null)return best;if(rB==null)return row;return rR>rB?row:best}));
+        data.forEach(row=>{row["Pertinence"]=classifyRow(row,ourSet)});
+        const descs=getLevelDescs(id);
+        const recap=ORDER_LEVELS.map(level=>{const rows=data.filter(r=>r["Pertinence"]===level);const vals=rows.map(r=>normRSSI(r[COLS.rssi1])).filter(v=>v!=null);const m=mean(vals);return{level,description:descs[level],count:rows.length,pct:data.length?Math.round(rows.length/data.length*10000)/100:0,rssiMean:m!=null?Math.round(m*100)/100:null}});
+        const allR1=data.map(r=>normRSSI(r[COLS.rssi1])).filter(v=>v!=null);
+        const gm=mean(allR1);
+        batchResults.push({id,total:data.length,globalMean:gm!=null?Math.round(gm*100)/100:null,recap,data});
+        addLog("  "+data.length+" lignes classifiées","success");
+      }catch(e){addLog("  erreur : "+e.message,"error")}
+    }
+    addLog("Terminé — "+batchResults.length+"/"+ids.length+" antennes analysées.","success");
+    if(!batchResults.length){
+      document.getElementById("processButtons").innerHTML='<button class="btn btn-ghost" onclick="goStep(0)">Retour</button><div></div>';
+      return;
+    }
+    document.getElementById("processTitle").textContent="Traitement par lot terminé";
+    document.getElementById("processSub").textContent=batchResults.length+" antennes analysées avec succès.";
+    document.getElementById("processButtons").innerHTML='<div></div><button class="btn btn-primary" onclick="renderBatchResults()">Voir les résultats</button>';
+  }catch(err){
+    addLog("Erreur : "+err.message,"error");
+    document.getElementById("processTitle").textContent="Erreur";
+    document.getElementById("processSub").textContent="Un problème est survenu.";
+    document.getElementById("processButtons").innerHTML='<button class="btn btn-ghost" onclick="goStep(0)">Recommencer</button><div></div>';
+  }
+}
+
+function renderBatchResults(){
+  currentStep=3;renderSteps();
+  ["section-0","section-1","section-2","section-3","section-4"].forEach(id=>document.getElementById(id).classList.remove("visible"));
+  document.getElementById("section-4").classList.add("visible");
+  const c=document.getElementById("section-4");
+  const totLines=batchResults.reduce((s,b)=>s+b.total,0);
+  let html='<div class="results-header"><h2>Résultats par lot — '+batchResults.length+' antennes</h2>'
+    +'<div style="display:flex;gap:8px"><button class="btn btn-save-hist" id="btnSaveAll" onclick="saveAllToHistory()"><span class="saved-check">✓ </span>💾 Tout enregistrer dans l\'historique</button></div></div>';
+  html+='<div class="summary-grid"><div class="summary-card"><div class="value">'+batchResults.length+'</div><div class="label">Antennes analysées</div></div>'
+    +'<div class="summary-card sc-highlight"><div class="value">'+totLines+'</div><div class="label">Lignes au total</div></div>'
+    +'<div class="summary-card"><div class="value">'+antennas.length+'</div><div class="label">Antennes du parc</div></div></div>';
+  html+='<div class="table-wrap"><table><thead><tr><th>Antenne</th>';
+  ORDER_LEVELS.forEach(l=>{html+='<th class="right" style="color:'+LEVEL_COLORS[l]+'" title="'+l+'">'+l.replace("Pertinence ","P").replace("à déterminer","?")+'</th>'});
+  html+='<th class="right">Total</th><th class="right">RSSI moy.</th><th class="center">Export</th></tr></thead><tbody>';
+  batchResults.forEach(b=>{
+    html+='<tr><td class="mono" style="font-weight:700">'+b.id+'</td>';
+    ORDER_LEVELS.forEach(l=>{const r=b.recap.find(r=>r.level===l);const cnt=r?r.count:0;const pct=r?r.pct:0;html+='<td class="right">'+cnt+' <span style="color:#9ca3af;font-size:10px">('+pct+'%)</span></td>'});
+    html+='<td class="right" style="font-weight:700">'+b.total+'</td>';
+    html+='<td class="right mono">'+(b.globalMean??'—')+'</td>';
+    html+='<td class="center"><button class="btn-detail" onclick="exportBatchOne(\''+b.id+'\')">.xlsx</button></td>';
+    html+='</tr>';
+  });
+  html+='</tbody></table></div>';
+  html+='<div class="btn-row-center"><button class="btn btn-ghost" onclick="resetAll()">Nouvelle analyse</button></div>';
+  c.innerHTML=html;
+}
+
+async function exportBatchOne(id){
+  const b=batchResults.find(x=>x.id===id);if(!b)return;
+  await exportExcel({data:b.data,recap:b.recap,total:b.total,globalMean:b.globalMean,weather:null,target:id,lieu:getAntennaLieu(id)||"",filename:"pertinence_"+id+".xlsx"});
+}
+
+function saveAllToHistory(){
+  if(!batchResults.length)return;
+  const dateLabel=new Date().toLocaleDateString("fr-FR",{day:"2-digit",month:"2-digit"}).replace("/","-");
+  const h=getHistory();
+  let added=0,replaced=0;
+  batchResults.forEach(b=>{
+    const target=b.id;
+    const contract=getAntennaContract(target)||"";
+    const lieu=getAntennaLieu(target)||"";
+    const entry={
+      id:Date.now().toString(36)+Math.random().toString(36).slice(2,6),
+      target,contract,lieu,date:dateLabel,
+      savedAt:new Date().toISOString(),
+      total:b.total,globalMean:b.globalMean,
+      recap:b.recap.map(r=>({level:r.level,count:r.count,pct:r.pct,rssiMean:r.rssiMean})),
+      comment:""
+    };
+    const dup=h.findIndex(e=>e.target===target&&e.date===dateLabel);
+    if(dup>=0){h[dup]=entry;replaced++}else{h.push(entry);added++}
+  });
+  setHistory(h);
+  const btn=document.getElementById("btnSaveAll");
+  if(btn){btn.classList.add("saved");btn.disabled=true;btn.innerHTML='<span class="saved-check" style="display:inline">✓ </span> Enregistré';setTimeout(()=>{btn.disabled=false},2000)}
+  alert(added+" antenne(s) enregistrée(s)"+(replaced?" ("+replaced+" remplacée(s))":"")+" dans l'historique à la date "+dateLabel+".\n\nLes antennes sans contrat apparaîtront dans « Antennes non assignées » de l'historique.");
+  if(confirm("Voulez-vous télécharger le fichier partagé mis à jour maintenant ?")){saveSharedFile()}
+}
 function readXlsx(file){return new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=e=>{try{const wb=XLSX.read(new Uint8Array(e.target.result),{type:"array"});resolve(XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{defval:""}))}catch(err){reject(err)}};reader.onerror=()=>reject(new Error("Erreur lecture"));reader.readAsArrayBuffer(file)})}
 
 // Extract jjmm date from filename end (before extension) → returns "jj-mm" or null
@@ -703,10 +825,10 @@ function renderResults(){
 function toggleDetail(level,btn){const dv=document.getElementById("detailView");if(viewLevel===level){viewLevel=null;dv.innerHTML="";btn.className="btn-detail";btn.textContent="Détails";return}document.querySelectorAll(".btn-detail").forEach(b=>{b.className="btn-detail";b.textContent="Détails"});viewLevel=level;btn.className="btn-detail btn-detail-on";btn.textContent="Masquer";const filtered=resultData.filter(r=>r["Pertinence"]===level);const colKeys=["Device ID",COLS.sid1,COLS.rssi1,COLS.sid2,COLS.rssi2,COLS.sid3,COLS.rssi3,COLS.sid4,COLS.rssi4];const colNames=colKeys.map(c=>c.replace(" (Receiver info)",""));let thead=colNames.map(c=>`<th>${c}</th>`).join("");let tbody=filtered.slice(0,200).map(r=>`<tr>${colKeys.map(c=>`<td${c.includes("RSSI")?' class="mono"':''}>${r[c]??""}</td>`).join("")}</tr>`).join("");dv.innerHTML=`<div class="detail-wrap"><div class="detail-header" style="background:${LEVEL_COLORS[level]}"><span>${level} — ${filtered.length} lignes</span><button class="btn-close-detail" onclick="toggleDetail('${level}',document.querySelector('.btn-detail-on'))">Fermer</button></div><div class="detail-body"><table><thead><tr>${thead}</tr></thead><tbody>${tbody}</tbody></table></div></div>`}
 
 // ── Donut chart ──
-function drawDonutChart(){
+function drawDonutChart(recapArg){
   const canvas=document.getElementById("chartCanvas");const ctx=canvas.getContext("2d");
   canvas.width=600;canvas.height=480;ctx.clearRect(0,0,600,480);ctx.fillStyle="#fff";ctx.fillRect(0,0,600,480);
-  const data=resultRecap.filter(r=>r.count>0);const total=data.reduce((s,r)=>s+r.count,0);
+  const data=(recapArg||resultRecap).filter(r=>r.count>0);const total=data.reduce((s,r)=>s+r.count,0);
   if(total===0)return canvas;
   const cx=200,cy=210,outerR=150,innerR=85;
   const colors={"Indispensable":"#C0392B","Pertinence +++":"#E67E22","Pertinence ++":"#F1C40F","Pertinence +":"#2980B9","Non Pertinent":"#95A5A6","Pertinence à déterminer":"#8E44AD"};
@@ -721,8 +843,16 @@ function drawDonutChart(){
 }
 
 // ── Export Excel ──
-async function exportExcel(){
-  if(!resultData||!resultRecap)return;
+async function exportExcel(opts){
+  const data=(opts&&opts.data)?opts.data:resultData;
+  const recap=(opts&&opts.recap)?opts.recap:resultRecap;
+  const total=(opts&&opts.total!=null)?opts.total:resultTotal;
+  const globalMean=(opts&&opts.globalMean!==undefined)?opts.globalMean:resultGlobalMean;
+  const weather=(opts&&opts.weather!==undefined)?opts.weather:weatherData;
+  const target=(opts&&opts.target)?opts.target:(document.getElementById("targetInput").value.trim().toUpperCase()||"9AD3");
+  const lieu=(opts&&opts.lieu!==undefined)?opts.lieu:document.getElementById("lieuInput").value.trim();
+  const filename=(opts&&opts.filename)?opts.filename:"donnees_avec_pertinence.xlsx";
+  if(!data||!recap)return;
   const wb=new ExcelJS.Workbook();wb.creator="Sigfox Pertinence Analyzer";
   const headerFill={type:'pattern',pattern:'solid',fgColor:{argb:'FF2C3E50'}};
   const headerFont={bold:true,color:{argb:'FFFFFFFF'},size:11,name:'Segoe UI'};
@@ -730,15 +860,13 @@ async function exportExcel(){
 
   // All data sheet
   const wsAll=wb.addWorksheet("Toutes_les_donnees");
-  const allCols=Object.keys(resultData[0]||{});
+  const allCols=Object.keys(data[0]||{});
   wsAll.addRow(allCols).eachCell(c=>{c.fill=headerFill;c.font={bold:true,color:{argb:'FFFFFFFF'},size:10};c.alignment={horizontal:'center'}});
-  resultData.forEach(row=>{wsAll.addRow(allCols.map(k=>row[k]??""))});
+  data.forEach(row=>{wsAll.addRow(allCols.map(k=>row[k]??""))});
   allCols.forEach((c,i)=>{wsAll.getColumn(i+1).width=Math.min(Math.max(c.length+4,12),40)});
 
   // Recap sheet
   const ws=wb.addWorksheet("Recap");
-  const target=document.getElementById("targetInput").value.trim().toUpperCase()||"9AD3";
-  const lieu=document.getElementById("lieuInput").value.trim();
   const descs=getLevelDescs(target);
 
   // Info block: Antenne + Lieu
@@ -756,7 +884,7 @@ async function exportExcel(){
   const hRow=ws.addRow(headers);hRow.height=32;
   hRow.eachCell(cell=>{cell.fill=headerFill;cell.font=headerFont;cell.alignment={horizontal:'center',vertical:'middle'};cell.border=thinBorder});
 
-  resultRecap.forEach((r,i)=>{
+  recap.forEach((r,i)=>{
     const row=ws.addRow([LEVEL_SYMBOLS[r.level]+" "+r.level,r.description,r.count,r.pct/100,r.rssiMean??""]);
     row.height=30;const hex=LEVEL_HEX[r.level]||"95A5A6";
     row.getCell(1).font={bold:true,color:{argb:'FF'+hex},size:11,name:'Segoe UI'};row.getCell(1).alignment={vertical:'middle'};row.getCell(1).border=thinBorder;
@@ -767,7 +895,7 @@ async function exportExcel(){
     if(i%2===1){for(let c=1;c<=5;c++)row.getCell(c).fill={type:'pattern',pattern:'solid',fgColor:{argb:'FFF8F9FA'}}}
   });
 
-  const totRow=ws.addRow(["TOTAL","",resultTotal,1,resultGlobalMean??""]);totRow.height=32;
+  const totRow=ws.addRow(["TOTAL","",total,1,globalMean??""]);totRow.height=32;
   for(let c=1;c<=5;c++){totRow.getCell(c).fill=headerFill;totRow.getCell(c).font=headerFont;totRow.getCell(c).alignment={horizontal:'center',vertical:'middle'};totRow.getCell(c).border=thinBorder}
   totRow.getCell(4).numFmt='0.00%';totRow.getCell(5).numFmt='0.00';
 
@@ -777,21 +905,21 @@ async function exportExcel(){
   const sc=7,sro=2;
   ws.getCell(1+sro,sc).value="Niveau";ws.getCell(1+sro,sc).fill=headerFill;ws.getCell(1+sro,sc).font=headerFont;ws.getCell(1+sro,sc).border=thinBorder;ws.getCell(1+sro,sc).alignment={horizontal:'center',vertical:'middle'};
   ws.getCell(1+sro,sc+1).value="Lignes";ws.getCell(1+sro,sc+1).fill=headerFill;ws.getCell(1+sro,sc+1).font=headerFont;ws.getCell(1+sro,sc+1).border=thinBorder;ws.getCell(1+sro,sc+1).alignment={horizontal:'center',vertical:'middle'};
-  resultRecap.forEach((r,i)=>{
+  recap.forEach((r,i)=>{
     ws.getCell(i+2+sro,sc).value=r.level;ws.getCell(i+2+sro,sc).font={size:10};ws.getCell(i+2+sro,sc).border=thinBorder;
     ws.getCell(i+2+sro,sc+1).value=r.count;ws.getCell(i+2+sro,sc+1).font={bold:true,size:10};ws.getCell(i+2+sro,sc+1).border=thinBorder;ws.getCell(i+2+sro,sc+1).alignment={horizontal:'center'};
   });
   ws.getColumn(sc).width=24;ws.getColumn(sc+1).width=10;
 
   // Donut chart image
-  const canvas=drawDonutChart();const base64=canvas.toDataURL("image/png").split(",")[1];
+  const canvas=drawDonutChart(recap);const base64=canvas.toDataURL("image/png").split(",")[1];
   const imgId=wb.addImage({base64,extension:'png'});
-  ws.addImage(imgId,{tl:{col:0,row:resultRecap.length+3},ext:{width:560,height:440}});
+  ws.addImage(imgId,{tl:{col:0,row:recap.length+3},ext:{width:560,height:440}});
 
   // ── Weather sheet in Recap ──
-  if(weatherData&&weatherData.days.length>0){
-    const wStartRow=resultRecap.length+3+24;// after chart
-    ws.getCell(wStartRow,1).value="Conditions météo — "+weatherData.cityName;
+  if(weather&&weather.days.length>0){
+    const wStartRow=recap.length+3+24;// after chart
+    ws.getCell(wStartRow,1).value="Conditions météo — "+weather.cityName;
     ws.getCell(wStartRow,1).font={bold:true,size:14,name:'Segoe UI',color:{argb:'FF2C3E50'}};
     ws.mergeCells(wStartRow,1,wStartRow,5);
 
@@ -801,7 +929,7 @@ async function exportExcel(){
     });
     wHdrRow.height=28;
 
-    weatherData.days.forEach((d,i)=>{
+    weather.days.forEach((d,i)=>{
       const row=ws.getRow(wStartRow+2+i);row.height=26;
       [d.dateFormatted,d.weatherIcon+" "+d.weatherText,d.tempMin,d.tempMax,d.precipitation,d.hadRain?"Oui":"Non",d.humidity!=null?d.humidity:"—",d.windMax].forEach((v,ci)=>{
         const cell=row.getCell(ci+1);cell.value=v;cell.border=thinBorder;
@@ -816,7 +944,7 @@ async function exportExcel(){
 
   // Per-level sheets
   ORDER_LEVELS.forEach(level=>{
-    const rows=resultData.filter(r=>r["Pertinence"]===level);if(!rows.length)return;
+    const rows=data.filter(r=>r["Pertinence"]===level);if(!rows.length)return;
     const wsL=wb.addWorksheet(LEVEL_TO_SHEET[level]);const cols=Object.keys(rows[0]);
     wsL.addRow(cols).eachCell(c=>{c.fill=headerFill;c.font={bold:true,color:{argb:'FFFFFFFF'},size:10};c.alignment={horizontal:'center'}});
     rows.forEach(r=>{wsL.addRow(cols.map(k=>r[k]??""))});
@@ -824,7 +952,7 @@ async function exportExcel(){
   });
 
   const buffer=await wb.xlsx.writeBuffer();
-  saveAs(new Blob([buffer],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}),"donnees_avec_pertinence.xlsx");
+  saveAs(new Blob([buffer],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}),filename);
 }
 
 function resetAll(){file1=null;selectedAntennaId=null;currentAnalysisDate=null;resultData=null;resultRecap=null;viewLevel=null;weatherData=null;
