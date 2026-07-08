@@ -350,14 +350,32 @@ function wmoIcon(code){return WMO_ICONS[code]||"❓"}
 function formatDate(d){const days=["Dimanche","Lundi","Mardi","Mercredi","Jeudi","Vendredi","Samedi"];const months=["janvier","février","mars","avril","mai","juin","juillet","août","septembre","octobre","novembre","décembre"];const dt=new Date(d+"T00:00:00");return days[dt.getDay()]+" "+dt.getDate()+" "+months[dt.getMonth()]+" "+dt.getFullYear()}
 
 // ── Timestamp helpers (used for the history date + weather) ──
-// Detect the timestamp column (case-insensitive, flexible naming)
+// Detect the timestamp column. On ne se fie plus au seul nom : on mesure la
+// proportion de valeurs qui se lisent comme une date récente plausible, et on
+// choisit la meilleure colonne (nom évocateur privilégié, sinon par contenu).
+function dateColumnScore(data,key){
+  let ok=0,tot=0;
+  for(const row of data){
+    const v=row[key];
+    if(v==null||v==="")continue;
+    tot++;
+    const d=parseCellDate(v);
+    if(d){const y=d.getFullYear();if(y>=2015&&y<=new Date().getFullYear()+1)ok++}
+    if(tot>=80)break;
+  }
+  return tot>0?ok/tot:0;
+}
 function findTimestampKey(data){
   if(!data||!data.length)return null;
   const keys=Object.keys(data[0]);
-  return keys.find(k=>k.toLowerCase()==="timestamp")
-    ||keys.find(k=>k.toLowerCase().includes("timestamp"))
-    ||keys.find(k=>k.toLowerCase().includes("date"))
-    ||keys.find(k=>k.toLowerCase().includes("time"))||null;
+  const nameRe=/(timestamp|horodat|date|heure|time|réception|reception|jour)/i;
+  let best=null,bestScore=0;
+  // 1) colonnes dont le nom évoque une date
+  keys.filter(k=>nameRe.test(k)).forEach(k=>{const s=dateColumnScore(data,k);if(s>bestScore){bestScore=s;best=k}});
+  if(best&&bestScore>=0.5)return best;
+  // 2) sinon, détection par contenu sur toutes les colonnes
+  keys.forEach(k=>{const s=dateColumnScore(data,k);if(s>bestScore){bestScore=s;best=k}});
+  return (best&&bestScore>=0.6)?best:null;
 }
 // Parse one cell into a Date. Gère en priorité le format français JOUR/MOIS
 // (jj/mm, jj/mm/aaaa, avec heure optionnelle), puis epoch s/ms, série Excel, ISO/texte.
@@ -366,15 +384,19 @@ function parseCellDate(ts){
   if(ts instanceof Date)return isNaN(ts.getTime())?null:ts;
   const s=String(ts).trim();
   const valid=d=>(d&&!isNaN(d.getTime()))?d:null;
-  // Format européen jour d'abord : jj/mm[/aaaa] (ou - ou .) avec heure optionnelle
-  const m=s.match(/^(\d{1,2})[\/\-.](\d{1,2})(?:[\/\-.](\d{2,4}))?(?:[ T](\d{1,2}):(\d{2})(?::(\d{2}))?)?/);
+  // Format européen jour d'abord : jj/mm[/aaaa] (séparateur / - .) avec heure optionnelle
+  const m=s.match(/^(\d{1,2})([\/.\-])(\d{1,2})(?:[\/.\-](\d{2,4}))?(?:[ T](\d{1,2}):(\d{2})(?::(\d{2}))?)?/);
   if(m){
-    const dd=parseInt(m[1],10),mm=parseInt(m[2],10);
-    let yy=m[3]?parseInt(m[3],10):new Date().getFullYear();
-    if(m[3]&&m[3].length===2)yy+=2000;
-    if(mm>=1&&mm<=12&&dd>=1&&dd<=31){
-      const hh=m[4]?parseInt(m[4],10):0,mi=m[5]?parseInt(m[5],10):0,se=m[6]?parseInt(m[6],10):0;
-      return valid(new Date(yy,mm-1,dd,hh,mi,se));
+    const sep=m[2],yearPart=m[4];
+    // Un point sans année (ex : "12.5") est un nombre décimal, pas une date
+    if(!(sep==="."&&!yearPart)){
+      const dd=parseInt(m[1],10),mm=parseInt(m[3],10);
+      let yy=yearPart?parseInt(yearPart,10):new Date().getFullYear();
+      if(yearPart&&yearPart.length===2)yy+=2000;
+      if(mm>=1&&mm<=12&&dd>=1&&dd<=31){
+        const hh=m[5]?parseInt(m[5],10):0,mi=m[6]?parseInt(m[6],10):0,se=m[7]?parseInt(m[7],10):0;
+        return valid(new Date(yy,mm-1,dd,hh,mi,se));
+      }
     }
   }
   // Valeurs numériques : epoch (s/ms) ou date série Excel
@@ -782,16 +804,22 @@ async function runAnalysis(){
 
     addLog("Analyse terminée — "+data.length+" lignes classifiées.","success");
 
-    // ── Date de l'analyse : priorité à la colonne Timestamp du fichier ──
+    // ── Date de l'analyse : lue dans la colonne de dates du fichier ──
     const tsKey=findTimestampKey(data);
-    if(tsKey)addLog("Colonne date détectée : "+tsKey);
+    if(tsKey){
+      const sample=data.map(r=>r[tsKey]).find(v=>v!=null&&v!=="");
+      addLog("Colonne date détectée : « "+tsKey+" » (ex : "+sample+")");
+    }
     const maxTs=maxTimestampDate(data,tsKey);
     if(maxTs){
       currentAnalysisDate=dateLabelFromDate(maxTs);
-      addLog("Date de l'analyse (Timestamp) : "+currentAnalysisDate,"success");
+      addLog("Date de l'analyse (lue dans le fichier) : "+currentAnalysisDate,"success");
     }else{
       currentAnalysisDate=null;
-      addLog(tsKey?"Colonne « "+tsKey+" » trouvée mais aucune date exploitable — la date du jour sera utilisée":"Aucune colonne Timestamp trouvée — la date du jour sera utilisée","warn");
+      addLog("Aucune date exploitable trouvée — la date du jour sera utilisée.","warn");
+      const cols=Object.keys(data[0]||{});
+      addLog("Colonnes du fichier : "+cols.join(" | "),"info");
+      addLog("1re ligne : "+cols.map(c=>c+"="+data[0][c]).join(" | "),"info");
     }
 
     // ── Weather ──
