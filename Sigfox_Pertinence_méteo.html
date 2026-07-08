@@ -1,0 +1,1476 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Analyse de Pertinence Sigfox</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+<canvas id="chartCanvas" width="600" height="480" style="display:none"></canvas>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Segoe UI',-apple-system,BlinkMacSystemFont,sans-serif;min-height:100vh;background:#f3f4f6;color:#1f2937;display:flex;flex-direction:column}
+header{background:#fff;border-bottom:1px solid #e5e7eb;padding:0 40px;height:56px;display:flex;align-items:center;flex-shrink:0}
+.header-inner{width:100%;max-width:1100px;margin:0 auto;display:flex;align-items:center;justify-content:space-between}
+.header-left{display:flex;align-items:center;gap:10px}
+.header-bar{width:3px;height:22px;background:#2563eb;border-radius:2px}
+.header-title{font-size:16px;font-weight:700;color:#111827;letter-spacing:-0.2px}
+.header-sep{color:#d1d5db;font-weight:300;margin:0 6px}
+.header-sub{font-size:13px;color:#6b7280;font-weight:400}
+.header-right{font-size:12px;color:#9ca3af}
+.main-wrap{flex:1;display:flex;align-items:flex-start;justify-content:center;padding:36px 24px 48px}
+.card{background:#fff;border-radius:10px;width:100%;max-width:1100px;border:1px solid #e5e7eb;box-shadow:0 1px 3px rgba(0,0,0,.06),0 1px 2px rgba(0,0,0,.04);padding:36px 40px 32px}
+.steps{display:flex;align-items:center;margin-bottom:32px;padding-bottom:24px;border-bottom:1px solid #f3f4f6}
+.step-item{display:flex;align-items:center}.step-item.expand{flex:1}
+.step-circle{width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:600;font-size:13px;flex-shrink:0;border:2px solid transparent;transition:all .25s}
+.step-circle.done{background:#2563eb;color:#fff;border-color:#2563eb}
+.step-circle.active{background:#fff;color:#2563eb;border-color:#2563eb}
+.step-circle.pending{background:#f9fafb;color:#9ca3af;border-color:#e5e7eb}
+.step-label{margin-left:8px;font-size:13px;white-space:nowrap;margin-right:10px}
+.step-label.done{color:#2563eb;font-weight:600}.step-label.active{color:#111827;font-weight:600}.step-label.pending{color:#9ca3af}
+.step-line{flex:1;height:1px}.step-line.done{background:#2563eb}.step-line.pending{background:#e5e7eb}
+.section{display:none}.section.visible{display:block}
+h2{font-size:17px;font-weight:700;color:#111827;margin-bottom:4px}
+.subtitle{font-size:14px;color:#6b7280;margin-bottom:22px}
+.file-grid{display:grid;grid-template-columns:1fr 1fr;gap:20px}
+.file-drop{border:1.5px dashed #d1d5db;border-radius:8px;padding:32px 24px;text-align:center;cursor:pointer;background:#fafafa;transition:all .15s;min-height:150px;display:flex;flex-direction:column;align-items:center;justify-content:center}
+.file-drop:hover{border-color:#9ca3af;background:#f9fafb}
+.file-drop.dragover{border-color:#2563eb;background:#eff6ff}
+.file-drop.has-file{border-color:#16a34a;border-style:solid;background:#f0fdf4}
+.file-drop .icon{font-size:28px;margin-bottom:10px;opacity:.7}
+.file-drop .label{font-weight:600;font-size:14px;color:#374151;margin-bottom:4px}
+.file-drop .hint{font-size:13px;color:#9ca3af}
+.file-drop .filename{margin-top:10px;font-size:13px;color:#16a34a;font-weight:600}
+.file-drop input[type="file"]{display:none}
+.btn{padding:9px 22px;border:none;border-radius:6px;font-weight:600;font-size:14px;cursor:pointer;transition:all .15s;font-family:inherit}
+.btn:active{transform:scale(.98)}
+.btn-primary{background:#2563eb;color:#fff}.btn-primary:hover{background:#1d4ed8}.btn-primary:disabled{background:#d1d5db;cursor:not-allowed}
+.btn-success{background:#16a34a;color:#fff}.btn-success:hover{background:#15803d}
+.btn-ghost{background:#f3f4f6;color:#4b5563;border:1px solid #e5e7eb}.btn-ghost:hover{background:#e5e7eb}
+.btn-export{background:#2563eb;color:#fff;font-size:13px;padding:8px 18px}.btn-export:hover{background:#1d4ed8}
+.btn-row{display:flex;justify-content:space-between;margin-top:28px}
+.btn-row-end{display:flex;justify-content:flex-end;margin-top:28px}
+.btn-row-center{display:flex;justify-content:center;margin-top:28px}
+.config-label{font-size:13px;font-weight:600;color:#374151;display:block;margin-bottom:6px}
+.config-input{padding:8px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:14px;font-weight:600;width:180px;font-family:'Cascadia Code','Consolas',monospace;outline:none;color:#111827}
+.config-input:focus{border-color:#2563eb;box-shadow:0 0 0 2px rgba(37,99,235,.12)}
+.config-input-text{padding:8px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:14px;width:280px;outline:none;color:#111827;font-family:inherit}
+.config-input-text:focus{border-color:#2563eb;box-shadow:0 0 0 2px rgba(37,99,235,.12)}
+.config-section{margin-bottom:22px}
+.config-hint{font-size:12px;color:#9ca3af;margin-top:4px}
+.tags{display:flex;flex-wrap:wrap;gap:5px;margin-bottom:8px;min-height:30px}
+.tag{background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe;border-radius:4px;padding:2px 9px;font-size:12px;font-weight:600;display:inline-flex;align-items:center;gap:5px;font-family:'Cascadia Code','Consolas',monospace}
+.tag .remove{cursor:pointer;opacity:.5;font-size:14px;line-height:1;color:#1d4ed8}.tag .remove:hover{opacity:1}
+.tag-input-row{display:flex;gap:8px}
+.tag-input{flex:1;padding:7px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;outline:none;font-family:inherit}
+.tag-input:focus{border-color:#2563eb;box-shadow:0 0 0 2px rgba(37,99,235,.12)}
+.btn-add-tag{padding:7px 14px;background:#2563eb;color:#fff;border:none;border-radius:6px;font-weight:600;cursor:pointer;font-size:13px;font-family:inherit}
+.info-box{background:#f9fafb;border:1px solid #e5e7eb;border-radius:6px;padding:12px 14px;font-size:13px;color:#6b7280;margin-bottom:16px}
+.console{background:#111827;border-radius:8px;padding:16px 18px;max-height:340px;overflow-y:auto;font-family:'Cascadia Code','Consolas',monospace;font-size:12.5px;border:1px solid #1f2937}
+.log-line{padding:2px 0;line-height:1.65}
+.log-info{color:#9ca3af}.log-success{color:#4ade80}.log-warn{color:#fbbf24}.log-error{color:#f87171}
+.summary-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:24px}
+.summary-card{border-radius:8px;padding:18px 20px;border:1px solid #e5e7eb;background:#fff}
+.summary-card .value{font-size:26px;font-weight:700;color:#111827}
+.summary-card .unit{font-size:13px;color:#6b7280;font-weight:400;margin-left:4px}
+.summary-card .label{font-size:12px;color:#6b7280;font-weight:500;margin-top:2px;text-transform:uppercase;letter-spacing:.3px}
+.sc-highlight .value{color:#2563eb}
+.table-wrap{border-radius:8px;overflow:hidden;border:1px solid #e5e7eb;margin-bottom:20px}
+table{width:100%;border-collapse:collapse;font-size:13px}
+thead tr{background:#f9fafb;border-bottom:1px solid #e5e7eb}
+th{padding:10px 14px;text-align:left;font-weight:600;font-size:12px;color:#6b7280;text-transform:uppercase;letter-spacing:.3px}
+th.right{text-align:right}th.center{text-align:center}
+td{padding:10px 14px;border-bottom:1px solid #f3f4f6}
+td.right{text-align:right}td.center{text-align:center}td.mono{font-family:'Cascadia Code','Consolas',monospace}
+tr:last-child td{border-bottom:none}
+tr.total{background:#f9fafb}tr.total td{font-weight:700;border-top:2px solid #e5e7eb}
+.badge{padding:3px 8px;border-radius:4px;font-size:11px;font-weight:600;display:inline-block;white-space:nowrap}
+.btn-detail{padding:4px 10px;border:1px solid #d1d5db;border-radius:4px;background:#fff;font-size:12px;font-weight:500;cursor:pointer;font-family:inherit;color:#374151}
+.btn-detail:hover{background:#f9fafb}
+.btn-detail-on{background:#2563eb;color:#fff;border-color:#2563eb}
+.detail-wrap{border-radius:8px;overflow:hidden;border:1px solid #e5e7eb;margin-bottom:20px}
+.detail-header{padding:10px 16px;font-weight:600;font-size:13px;color:#fff;display:flex;justify-content:space-between;align-items:center}
+.btn-close-detail{background:rgba(255,255,255,.15);color:#fff;border:none;border-radius:4px;padding:3px 10px;font-size:12px;cursor:pointer;font-weight:500;font-family:inherit}
+.detail-body{max-height:350px;overflow:auto}
+.detail-body th{padding:8px 10px;font-size:11px;color:#6b7280;background:#f9fafb;border-bottom:1px solid #e5e7eb;position:sticky;top:0;z-index:1}
+.detail-body td{padding:7px 10px;white-space:nowrap;font-size:12px}
+.results-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:22px}
+/* Weather card */
+.weather-section{margin-bottom:24px}
+.weather-title{font-size:15px;font-weight:700;color:#111827;margin-bottom:12px}
+.weather-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:14px}
+.weather-day{border:1px solid #e5e7eb;border-radius:8px;padding:16px 18px;background:#fff}
+.weather-day-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
+.weather-date{font-weight:700;font-size:14px;color:#111827}
+.weather-icon{font-size:24px}
+.weather-summary{font-size:13px;color:#6b7280;font-weight:500;margin-bottom:10px;font-style:italic}
+.weather-stats{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.weather-stat{font-size:12px;color:#4b5563}
+.weather-stat span{font-weight:600;color:#111827}
+@media(max-width:700px){.card{padding:24px 20px}.file-grid,.summary-grid{grid-template-columns:1fr}header{padding:0 20px}.weather-grid{grid-template-columns:1fr}}
+/* ── History styles ── */
+.btn-history{background:none;border:1px solid #d1d5db;border-radius:6px;padding:5px 14px;font-size:12px;font-weight:600;color:#4b5563;cursor:pointer;font-family:inherit;display:flex;align-items:center;gap:5px;transition:all .15s}
+.btn-history:hover{background:#f3f4f6;border-color:#9ca3af;color:#111827}
+.btn-history .hicon{font-size:15px}
+.history-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.35);z-index:1000;justify-content:center;align-items:flex-start;padding:32px 16px;overflow-y:auto}
+.history-overlay.open{display:flex}
+.history-panel{background:#fff;border-radius:12px;width:100%;max-width:960px;max-height:calc(100vh - 64px);overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.2);border:1px solid #e5e7eb}
+.hp-header{padding:20px 24px 16px;border-bottom:1px solid #e5e7eb;display:flex;justify-content:space-between;align-items:center;position:sticky;top:0;background:#fff;z-index:2;border-radius:12px 12px 0 0}
+.hp-header h2{font-size:17px;font-weight:700;color:#111827;margin:0}
+.hp-close{background:none;border:none;font-size:22px;cursor:pointer;color:#6b7280;padding:4px 8px;border-radius:4px;line-height:1}.hp-close:hover{background:#f3f4f6;color:#111827}
+.hp-body{padding:20px 24px 24px}
+.hp-empty{text-align:center;padding:48px 24px;color:#9ca3af}
+.hp-empty .em{font-size:36px;margin-bottom:12px}
+.hp-empty p{font-size:14px;line-height:1.6}
+/* Antenna list */
+.ant-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px;margin-bottom:20px}
+/* Contract cards */
+.contract-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px;margin-bottom:20px}
+.contract-card{border:1px solid #e5e7eb;border-radius:10px;padding:18px 20px;cursor:pointer;transition:all .15s;background:#fff;text-align:center}
+.contract-card:hover{border-color:#2563eb;background:#eff6ff;transform:translateY(-1px);box-shadow:0 4px 12px rgba(37,99,235,.1)}
+.contract-card-name{font-size:18px;font-weight:800;color:#111827;letter-spacing:.5px}
+.contract-card-count{font-size:12px;color:#6b7280;margin-top:4px}
+.contract-card-icon{font-size:28px;margin-bottom:6px}
+/* Breadcrumb */
+.hist-breadcrumb{display:flex;align-items:center;gap:6px;margin-bottom:14px;font-size:12px;color:#6b7280}
+.hist-breadcrumb a{color:#2563eb;cursor:pointer;text-decoration:none;font-weight:600}
+.hist-breadcrumb a:hover{text-decoration:underline}
+.hist-breadcrumb .sep{color:#d1d5db}
+/* Assign contract in history */
+.assign-select{padding:4px 8px;border:1px solid #d1d5db;border-radius:4px;font-size:11px;font-family:inherit;cursor:pointer;outline:none}
+.assign-select:focus{border-color:#2563eb}
+/* Level filter toggles */
+.level-filters{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px}
+.level-toggle{padding:4px 10px;border:1px solid #d1d5db;border-radius:20px;font-size:11px;font-weight:600;cursor:pointer;background:#fff;transition:all .15s;font-family:inherit}
+.level-toggle:hover{background:#f3f4f6}
+.level-toggle.on{color:#fff;border-color:transparent}
+.ant-card{border:1px solid #e5e7eb;border-radius:8px;padding:14px 16px;cursor:pointer;transition:all .15s;background:#fff}
+.ant-card:hover{border-color:#2563eb;background:#eff6ff}
+.ant-card.active{border-color:#2563eb;background:#eff6ff;box-shadow:0 0 0 2px rgba(37,99,235,.15)}
+.ant-card-id{font-size:16px;font-weight:700;color:#111827;font-family:'Cascadia Code','Consolas',monospace}
+.ant-card-lieu{font-size:11px;color:#6b7280;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ant-card-count{font-size:11px;color:#9ca3af;margin-top:4px}
+/* Antenna detail */
+.ant-detail{display:none}
+.ant-detail.visible{display:block}
+.ant-detail-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px}
+.ant-detail-header h3{font-size:15px;font-weight:700;color:#111827;margin:0}
+.btn-back-list{background:none;border:1px solid #d1d5db;border-radius:5px;padding:5px 12px;font-size:12px;font-weight:600;cursor:pointer;color:#4b5563;font-family:inherit}
+.btn-back-list:hover{background:#f3f4f6}
+/* History table */
+.hist-table-wrap{border-radius:8px;overflow-x:auto;border:1px solid #e5e7eb;margin-bottom:20px}
+.hist-table{width:100%;border-collapse:collapse;font-size:12px}
+.hist-table thead tr{background:#f9fafb;border-bottom:1px solid #e5e7eb}
+.hist-table th{padding:8px 10px;text-align:center;font-weight:600;font-size:10.5px;color:#6b7280;text-transform:uppercase;letter-spacing:.3px;white-space:nowrap}
+.hist-table td{padding:7px 10px;border-bottom:1px solid #f3f4f6;text-align:center;font-size:12px}
+.hist-table td:first-child{text-align:left;font-weight:600}
+.hist-table tr:last-child td{border-bottom:none}
+.hist-table .comment-cell{max-width:160px;text-align:left;font-style:italic;color:#6b7280;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hist-table .btn-comment{background:none;border:1px solid #d1d5db;border-radius:4px;padding:2px 8px;font-size:11px;cursor:pointer;color:#6b7280;font-family:inherit}.hist-table .btn-comment:hover{background:#f3f4f6;color:#111827}
+.hist-table .btn-del{background:none;border:none;color:#d1d5db;cursor:pointer;font-size:14px;padding:2px 6px}.hist-table .btn-del:hover{color:#dc2626}
+/* Chart area */
+.hist-chart-wrap{margin-bottom:20px;border:1px solid #e5e7eb;border-radius:8px;padding:16px;background:#fff}
+.hist-chart-title{font-size:13px;font-weight:700;color:#111827;margin-bottom:10px}
+.hist-chart{width:100%;height:260px}
+/* Compare selector */
+.compare-section{margin-top:16px;padding:16px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px}
+.compare-section h4{font-size:13px;font-weight:700;color:#1d4ed8;margin:0 0 10px}
+.compare-row{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+.compare-row select{padding:6px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:12px;font-family:inherit;outline:none;min-width:140px}
+.compare-row select:focus{border-color:#2563eb}
+.compare-result{margin-top:12px}
+.compare-result .cr-table{width:100%;border-collapse:collapse;font-size:11.5px}
+.compare-result .cr-table th{background:#1d4ed8;color:#fff;padding:6px 8px;font-size:10px;text-align:center}
+.compare-result .cr-table td{padding:5px 8px;border-bottom:1px solid #e5e7eb;text-align:center}
+.compare-result .cr-table td:first-child{text-align:left;font-weight:600}
+.delta-pos{color:#16a34a;font-weight:700}.delta-neg{color:#dc2626;font-weight:700}
+/* Save button in results */
+.btn-save-hist{background:#7c3aed;color:#fff;font-size:13px;padding:8px 18px;border:none;border-radius:6px;font-weight:600;cursor:pointer;font-family:inherit;display:flex;align-items:center;gap:5px;transition:all .15s}
+.btn-save-hist:hover{background:#6d28d9}
+.btn-save-hist:disabled{background:#d1d5db;cursor:not-allowed}
+.btn-save-hist .saved-check{display:none}
+.btn-save-hist.saved{background:#16a34a}.btn-save-hist.saved .saved-check{display:inline}
+/* Export/import history */
+.hp-actions{display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap}
+.hp-actions .btn-sm{padding:5px 12px;border:1px solid #d1d5db;border-radius:5px;font-size:11px;font-weight:600;cursor:pointer;background:#fff;color:#4b5563;font-family:inherit}.hp-actions .btn-sm:hover{background:#f3f4f6}
+.hp-actions .btn-sm.danger{color:#dc2626;border-color:#fca5a5}.hp-actions .btn-sm.danger:hover{background:#fef2f2}
+/* Sync styles */
+.header-right{display:flex;align-items:center;gap:8px}
+.sync-status{font-size:11px;color:#9ca3af;display:flex;align-items:center;gap:4px}
+.sync-status.ok{color:#16a34a}
+.sync-status.warn{color:#d97706}
+.sync-status .dot{width:7px;height:7px;border-radius:50%;display:inline-block}
+.sync-status.ok .dot{background:#16a34a}
+.sync-status.warn .dot{background:#d97706}
+.sync-status.loading .dot{background:#2563eb;animation:pulse 1s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+.sync-banner{padding:10px 16px;background:#fefce8;border:1px solid #fde68a;border-radius:8px;margin-bottom:16px;font-size:12px;color:#78350f;display:flex;align-items:flex-start;gap:8px;line-height:1.5}
+.sync-banner strong{font-weight:700}
+.sync-banner .btn-sm{margin-left:8px}
+</style>
+</head>
+<body>
+<header>
+  <div class="header-inner">
+    <div class="header-left">
+      <div class="header-bar"></div>
+      <span class="header-title">Analyse de Pertinence</span>
+      <span class="header-sep">|</span>
+      <span class="header-sub">Réseau Sigfox</span>
+    </div>
+    <div class="header-right"><span class="sync-status" id="syncStatus" title="État de la synchronisation"><span class="dot"></span> <span id="syncLabel">—</span></span><button class="btn-history" onclick="openHistory()"><span class="hicon">📋</span> Historique</button></div>
+  </div>
+</header>
+<!-- History overlay -->
+<div class="history-overlay" id="historyOverlay" onclick="if(event.target===this)closeHistory()">
+  <div class="history-panel">
+    <div class="hp-header">
+      <h2 id="hpTitle">Historique des analyses</h2>
+      <button class="hp-close" onclick="closeHistory()">&times;</button>
+    </div>
+    <div class="hp-body" id="hpBody"></div>
+  </div>
+</div>
+<div class="main-wrap">
+  <div class="card">
+    <div class="steps" id="stepsBar"></div>
+    <div class="section visible" id="section-0">
+      <h2>Import des fichiers</h2>
+      <p class="subtitle">Chargez les deux fichiers Excel nécessaires à l'analyse.</p>
+      <div class="file-grid">
+        <div class="file-drop" id="drop1" onclick="document.getElementById('input1').click()"><input type="file" id="input1" accept=".xlsx"/><div class="icon">&#128196;</div><div class="label">Données Sigfox</div><div class="hint">Fichier contenant Device ID, Station ID, RSSI</div><div class="filename" id="fname1"></div></div>
+        <div class="file-drop" id="drop2" onclick="document.getElementById('input2').click()"><input type="file" id="input2" accept=".xlsx"/><div class="icon">&#128196;</div><div class="label">Référentiel Devices</div><div class="hint">Fichier contenant la colonne Id Sigfox</div><div class="filename" id="fname2"></div></div>
+      </div>
+      <div class="btn-row-end"><button class="btn btn-primary" id="btnNext0" disabled onclick="goStep(1)">Continuer</button></div>
+    </div>
+    <div class="section" id="section-1">
+      <h2>Paramètres</h2>
+      <p class="subtitle">Vérifiez la configuration et renseignez la localisation pour la météo.</p>
+      <div class="config-section">
+        <label class="config-label">Antenne cible (Station ID principale)</label>
+        <input class="config-input" id="targetInput" value="9AD3"/>
+      </div>
+      <div class="config-section">
+        <label class="config-label">Contrat</label>
+        <select class="config-input-text" id="contractInput" style="width:220px;padding:8px 12px;cursor:pointer">
+          <option value="">— Sélectionner un contrat —</option>
+        </select>
+        <div class="config-hint">Contrat auquel l'antenne est rattachée. Utilisé pour organiser l'historique.</div>
+      </div>
+      <div class="config-section">
+        <label class="config-label">Lieu de l'antenne</label>
+        <input class="config-input-text" id="lieuInput" placeholder="Ex : Ouvrage A3, Poste HTA Nord, Site Bordeaux..."/>
+        <div class="config-hint">Information libre affichée dans la feuille Recap de l'export Excel.</div>
+      </div>
+      <div class="config-section">
+        <label class="config-label">Localisation (pour la météo)</label>
+        <input class="config-input-text" id="cityInput" placeholder="Ex : Lyon, Villefontaine, Saint-André-de-Cubzac..."/>
+        <div class="config-hint">Nom de la ville pour récupérer la météo des 3 derniers jours.</div>
+      </div>
+      <div class="config-section">
+        <label class="config-label">Antennes du parc (<span id="antennaCount">0</span>)</label>
+        <div class="tags" id="tagsContainer"></div>
+        <div class="tag-input-row">
+          <input class="tag-input" id="tagInput" placeholder="ID antenne..."/>
+          <button class="btn-add-tag" onclick="addTag()">Ajouter</button>
+        </div>
+      </div>
+      <div class="info-box"><strong>Seuil RSSI nul :</strong> -130 dBm — Les signaux inférieurs ou égaux à cette valeur sont considérés comme nuls.</div>
+      <div class="btn-row">
+        <button class="btn btn-ghost" onclick="goStep(0)">Retour</button>
+        <button class="btn btn-success" onclick="goStep(2);setTimeout(runAnalysis,200);">Lancer l'analyse</button>
+      </div>
+    </div>
+    <div class="section" id="section-2">
+      <h2 id="processTitle">Traitement en cours</h2>
+      <p class="subtitle" id="processSub">Veuillez patienter pendant l'analyse des données.</p>
+      <div class="console" id="console"></div>
+      <div class="btn-row" id="processButtons"></div>
+    </div>
+    <div class="section" id="section-3">
+      <div class="results-header">
+        <h2>Résultats de l'analyse</h2>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-save-hist" id="btnSaveHist" onclick="saveToHistory()"><span class="saved-check">✓ </span>💾 Sauvegarder dans l'historique</button>
+          <button class="btn btn-export" onclick="exportExcel()">Exporter (.xlsx)</button>
+        </div>
+      </div>
+      <div id="weatherSection"></div>
+      <div class="summary-grid" id="summaryGrid"></div>
+      <div class="table-wrap" id="recapTable"></div>
+      <div id="detailView"></div>
+      <div class="btn-row-center"><button class="btn btn-ghost" onclick="resetAll()">Nouvelle analyse</button></div>
+    </div>
+  </div>
+</div>
+<script>
+let currentStep=0,file1=null,file2=null,currentAnalysisDate=null,resultData=null,resultRecap=null,resultGlobalMean=null,resultTotal=0,viewLevel=null,weatherData=null;
+const STEP_NAMES=["Import","Paramètres","Traitement","Résultats"],THRESHOLD_NUL=-130;
+const DEFAULT_ANTENNAS=["96B2","6E34","7602","D8CF","6B67","52A6","8F4F","99C2","6A0A","2A73","700B","6B4C","8CE8","7023","DD13","8F69","A63D","A63C","CE7E","DD15","DD12","B7DE","8F51","886D","9938","A630","89FE","88ED","CEC3","96BF","89B0","B373","CA0D","32D4","98EA","15352","89BE","6149","C9EA","DC22","96EC","886F","DCBB","A56F","DD14","CECC","DC0E","6AFD","B36F","D824","96C3","C9EE","A640","9AD3","D8E1","1078E","CEA4","10797","DCE9","10FDB","D8E2","85AA","A62C","0731","8F64","65DD","CF64"];
+let antennas=[...DEFAULT_ANTENNAS];
+const COLS={sid1:"Station ID1 (Receiver info)",rssi1:"RSSI1 (Receiver info)",sid2:"Station ID2 (Receiver info)",rssi2:"RSSI2 (Receiver info)",sid3:"Station ID3 (Receiver info)",rssi3:"RSSI3 (Receiver info)",sid4:"Station ID4 (Receiver info)",rssi4:"RSSI4 (Receiver info)"};
+const ORDER_LEVELS=["Indispensable","Pertinence +++","Pertinence ++","Pertinence +","Non Pertinent","Pertinence à déterminer"];
+const LEVEL_TO_SHEET={"Indispensable":"Indispensable","Pertinence +++":"Pertinence_PLUSPLUSPLUS","Pertinence ++":"Pertinence_PLUSPLUS","Pertinence +":"Pertinence_PLUS","Non Pertinent":"Non_Pertinent","Pertinence à déterminer":"A_determiner"};
+const LEVEL_COLORS={"Indispensable":"#dc2626","Pertinence +++":"#ea580c","Pertinence ++":"#d97706","Pertinence +":"#ca8a04","Non Pertinent":"#6b7280","Pertinence à déterminer":"#7c3aed"};
+const LEVEL_HEX={"Indispensable":"C0392B","Pertinence +++":"E67E22","Pertinence ++":"F1C40F","Pertinence +":"2980B9","Non Pertinent":"95A5A6","Pertinence à déterminer":"8E44AD"};
+const LEVEL_SYMBOLS={"Indispensable":"●","Pertinence +++":"●","Pertinence ++":"●","Pertinence +":"●","Non Pertinent":"○","Pertinence à déterminer":"?"};
+
+function getLevelDescs(t){return{"Indispensable":`Entendu uniquement par ${t} avec un RSSI > ${THRESHOLD_NUL}`,"Pertinence +++":`Entendu par plusieurs antennes, ${t} a le meilleur RSSI (> ${THRESHOLD_NUL})`,"Pertinence ++":`${t} n'a pas le meilleur RSSI et les autres antennes ne sont pas à nous`,"Pertinence +":`${t} n'a pas le meilleur RSSI mais au moins une autre antenne à nous capte bien`,"Non Pertinent":`RSSI ${t} ≤ ${THRESHOLD_NUL} (fréquence nulle)`,"Pertinence à déterminer":`Entendu uniquement par ${t} avec un RSSI ≤ ${THRESHOLD_NUL}`}}
+const normStation=x=>{if(x==null||x==="")return null;return String(x).trim().toUpperCase()};
+const normRSSI=x=>{if(x==null||x==="")return null;const v=parseFloat(String(x).replace(",","."));return isNaN(v)?null:v};
+function classifyRow(row,ourSet){const rssi1=normRSSI(row[COLS.rssi1]);const others=[];for(let k=2;k<=4;k++){const sid=normStation(row[COLS["sid"+k]]);const rssi=normRSSI(row[COLS["rssi"+k]]);if(sid!=null&&rssi!=null)others.push({sid,rssi})}if(others.length===0)return rssi1!=null&&rssi1>THRESHOLD_NUL?"Indispensable":"Pertinence à déterminer";const allR=[rssi1,...others.map(o=>o.rssi)].filter(v=>v!=null);const best=Math.max(...allR);if(rssi1!=null&&rssi1<=THRESHOLD_NUL)return"Non Pertinent";if(rssi1===best)return"Pertinence +++";const otherOur=others.filter(o=>ourSet.has(o.sid));if(otherOur.some(o=>o.rssi>THRESHOLD_NUL))return"Pertinence +";return"Pertinence ++"}
+function mean(arr){if(!arr.length)return null;return arr.reduce((a,b)=>a+b,0)/arr.length}
+
+// ── Weather helpers ──
+const WMO_CODES={0:"Ciel dégagé",1:"Peu nuageux",2:"Partiellement nuageux",3:"Couvert",45:"Brouillard",48:"Brouillard givrant",51:"Bruine légère",53:"Bruine modérée",55:"Bruine forte",61:"Pluie légère",63:"Pluie modérée",65:"Pluie forte",66:"Pluie verglaçante légère",67:"Pluie verglaçante forte",71:"Neige légère",73:"Neige modérée",75:"Neige forte",77:"Grains de neige",80:"Averses légères",81:"Averses modérées",82:"Averses violentes",85:"Averses de neige légères",86:"Averses de neige fortes",95:"Orage",96:"Orage avec grêle légère",99:"Orage avec grêle forte"};
+const WMO_ICONS={0:"☀️",1:"🌤️",2:"⛅",3:"☁️",45:"🌫️",48:"🌫️",51:"🌦️",53:"🌧️",55:"🌧️",61:"🌧️",63:"🌧️",65:"🌧️",66:"🌧️",67:"🌧️",71:"🌨️",73:"🌨️",75:"🌨️",77:"🌨️",80:"🌦️",81:"🌧️",82:"⛈️",85:"🌨️",86:"🌨️",95:"⛈️",96:"⛈️",99:"⛈️"};
+function wmoText(code){return WMO_CODES[code]||"Inconnu"}
+function wmoIcon(code){return WMO_ICONS[code]||"❓"}
+function formatDate(d){const days=["Dimanche","Lundi","Mardi","Mercredi","Jeudi","Vendredi","Samedi"];const months=["janvier","février","mars","avril","mai","juin","juillet","août","septembre","octobre","novembre","décembre"];const dt=new Date(d+"T00:00:00");return days[dt.getDay()]+" "+dt.getDate()+" "+months[dt.getMonth()]+" "+dt.getFullYear()}
+
+async function fetchWeather(city,endDate){
+  // 1. Geocode city - try multiple name variants
+  function cityVariants(name){
+    const variants=[name];
+    // Expand common French abbreviations
+    const expanded=name.replace(/\bSt[\-\s]/gi,"Saint-").replace(/\bSte[\-\s]/gi,"Sainte-");
+    if(expanded!==name)variants.push(expanded);
+    // Try without hyphens
+    variants.push(name.replace(/-/g," "));
+    if(expanded!==name)variants.push(expanded.replace(/-/g," "));
+    // Try just the first word (main city name)
+    const first=name.split(/[\s\-]/)[0];
+    if(first.length>3&&!variants.includes(first))variants.push(first);
+    return[...new Set(variants)];
+  }
+  let geoData=null,loc=null;
+  const variants=cityVariants(city);
+  for(const variant of variants){
+    const geoUrl=`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(variant)}&count=5&language=fr&format=json`;
+    const geoRes=await fetch(geoUrl);
+    geoData=await geoRes.json();
+    if(geoData.results&&geoData.results.length>0){
+      // Prefer results in France
+      loc=geoData.results.find(r=>r.country_code==="FR")||geoData.results[0];
+      break;
+    }
+  }
+  if(!loc)throw new Error(`Ville "${city}" introuvable. Essayez le nom complet (ex: Saint-André-de-Cubzac)`);
+  const lat=loc.latitude,lon=loc.longitude;
+  const cityName=loc.name+(loc.admin1?", "+loc.admin1:"");
+
+  // 2. Compute last 3 days from endDate
+  const end=new Date(endDate);
+  const start=new Date(end);
+  start.setDate(start.getDate()-2);
+  const fmt=d=>d.toISOString().split("T")[0];
+
+  // 3. Fetch weather - try forecast API first (covers recent past), fallback to archive
+  const params=`latitude=${lat}&longitude=${lon}&start_date=${fmt(start)}&end_date=${fmt(end)}&daily=weathercode,temperature_2m_max,temperature_2m_min,precipitation_sum,rain_sum,relative_humidity_2m_mean,windspeed_10m_max&timezone=Europe/Paris`;
+
+  let wData;
+  try{
+    const res=await fetch(`https://api.open-meteo.com/v1/forecast?${params}&past_days=14`);
+    wData=await res.json();
+    if(!wData.daily||!wData.daily.time)throw new Error("no data");
+    // Filter to our date range
+    const times=wData.daily.time;
+    const startStr=fmt(start),endStr=fmt(end);
+    const indices=[];
+    times.forEach((t,i)=>{if(t>=startStr&&t<=endStr)indices.push(i)});
+    if(indices.length===0)throw new Error("no matching dates");
+    const filtered={time:[],weathercode:[],temperature_2m_max:[],temperature_2m_min:[],precipitation_sum:[],rain_sum:[],relative_humidity_2m_mean:[],windspeed_10m_max:[]};
+    indices.forEach(i=>{
+      Object.keys(filtered).forEach(k=>{filtered[k].push(wData.daily[k][i])});
+    });
+    wData.daily=filtered;
+  }catch{
+    // Fallback to archive API
+    const res2=await fetch(`https://archive-api.open-meteo.com/v1/archive?${params}`);
+    wData=await res2.json();
+  }
+
+  if(!wData.daily||!wData.daily.time||wData.daily.time.length===0)throw new Error("Pas de données météo disponibles pour ces dates");
+
+  const days=wData.daily.time.map((t,i)=>({
+    date:t,
+    dateFormatted:formatDate(t),
+    weatherCode:wData.daily.weathercode[i],
+    weatherText:wmoText(wData.daily.weathercode[i]),
+    weatherIcon:wmoIcon(wData.daily.weathercode[i]),
+    tempMax:wData.daily.temperature_2m_max[i],
+    tempMin:wData.daily.temperature_2m_min[i],
+    precipitation:wData.daily.precipitation_sum[i],
+    rain:wData.daily.rain_sum?wData.daily.rain_sum[i]:null,
+    humidity:wData.daily.relative_humidity_2m_mean?wData.daily.relative_humidity_2m_mean[i]:null,
+    windMax:wData.daily.windspeed_10m_max[i],
+    hadRain:(wData.daily.precipitation_sum[i]||0)>0.2,
+  }));
+
+  return{cityName,lat,lon,days};
+}
+
+// ── UI ──
+function renderSteps(){const bar=document.getElementById("stepsBar");bar.innerHTML="";STEP_NAMES.forEach((name,i)=>{const done=i<currentStep,active=i===currentStep,cls=done?"done":active?"active":"pending";let h=`<div class="step-item${i<STEP_NAMES.length-1?' expand':''}"><div class="step-circle ${cls}">${done?"&#10003;":i+1}</div><span class="step-label ${cls}">${name}</span>`;if(i<STEP_NAMES.length-1)h+=`<div class="step-line ${done?'done':'pending'}"></div>`;h+=`</div>`;bar.innerHTML+=h})}
+function goStep(s){currentStep=s;renderSteps();for(let i=0;i<4;i++)document.getElementById("section-"+i).classList.toggle("visible",i===s)}
+function setupFileDrop(dropId,inputId,fnameId,num){const drop=document.getElementById(dropId),input=document.getElementById(inputId);drop.addEventListener("dragover",e=>{e.preventDefault();drop.classList.add("dragover")});drop.addEventListener("dragleave",()=>drop.classList.remove("dragover"));drop.addEventListener("drop",e=>{e.preventDefault();drop.classList.remove("dragover");if(e.dataTransfer.files[0])handleFile(e.dataTransfer.files[0],num,drop,fnameId)});input.addEventListener("change",e=>{if(e.target.files[0])handleFile(e.target.files[0],num,drop,fnameId)})}
+function handleFile(f,num,drop,fnameId){if(num===1)file1=f;else file2=f;drop.classList.add("has-file");drop.querySelector(".icon").innerHTML="&#10004;";document.getElementById(fnameId).textContent=f.name;document.getElementById("btnNext0").disabled=!(file1&&file2)}
+function readXlsx(file){return new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=e=>{try{const wb=XLSX.read(new Uint8Array(e.target.result),{type:"array"});resolve(XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{defval:""}))}catch(err){reject(err)}};reader.onerror=()=>reject(new Error("Erreur lecture"));reader.readAsArrayBuffer(file)})}
+
+// Extract jjmm date from filename end (before extension) → returns "jj-mm" or null
+function extractDateFromFilename(filename){
+  if(!filename)return null;
+  // Remove extension
+  const base=filename.replace(/\.[^.]+$/,"");
+  // Match 4 digits at the very end
+  const m=base.match(/(\d{2})(\d{2})$/);
+  if(!m)return null;
+  return m[1]+"-"+m[2];
+}
+
+// Read previous analysis export: parse "Recap" sheet to extract levels, counts, %, rssi mean
+function readPreviousAnalysis(file){return new Promise((resolve,reject)=>{
+  const reader=new FileReader();
+  reader.onload=e=>{try{
+    const wb=XLSX.read(new Uint8Array(e.target.result),{type:"array"});
+    // Find Recap sheet (case insensitive)
+    const recapName=wb.SheetNames.find(n=>n.toLowerCase()==="recap")||wb.SheetNames.find(n=>n.toLowerCase().includes("recap"));
+    if(!recapName)throw new Error('Feuille "Recap" introuvable dans le fichier');
+    const sheet=wb.Sheets[recapName];
+    // Read as array of arrays
+    const rows=XLSX.utils.sheet_to_json(sheet,{header:1,defval:""});
+    // Try to find antenna target and lieu in info block (first few rows)
+    let prevTarget=null,prevLieu=null;
+    for(let i=0;i<Math.min(5,rows.length);i++){
+      const r=rows[i];
+      for(let c=0;c<r.length;c++){
+        const v=String(r[c]||"").toLowerCase();
+        if(v.includes("antenne cible")&&r[c+1])prevTarget=String(r[c+1]).trim();
+        if(v.startsWith("lieu")&&r[c+1])prevLieu=String(r[c+1]).trim();
+      }
+    }
+    // Find rows matching levels (col 0 contains "Indispensable", "Pertinence +++", etc.)
+    const levelMap={};
+    const levelKeys=ORDER_LEVELS;
+    rows.forEach(r=>{
+      if(!r||r.length<3)return;
+      const cell0=String(r[0]||"").trim();
+      // Strip leading symbol (●, ○, ?) and spaces
+      const cleaned=cell0.replace(/^[●○?]\s*/,"").trim();
+      const matchedLevel=levelKeys.find(lvl=>cleaned===lvl);
+      if(matchedLevel){
+        // Columns: 0=Niveau, 1=Description, 2=Count, 3=Pct (0-1), 4=RSSI moyen
+        const count=parseFloat(r[2]);
+        let pct=parseFloat(r[3]);
+        // In the export pct is stored as fraction (0.1234 with numFmt 0.00%), so multiply
+        if(!isNaN(pct)&&pct<=1.0001)pct=pct*100;
+        const rssi=r[4]===""||r[4]==null?null:parseFloat(r[4]);
+        levelMap[matchedLevel]={count:isNaN(count)?0:count,pct:isNaN(pct)?0:Math.round(pct*100)/100,rssiMean:isNaN(rssi)?null:rssi};
+      }
+    });
+    // Find TOTAL row
+    let prevTotal=null,prevGlobalMean=null;
+    rows.forEach(r=>{
+      if(!r||r.length<3)return;
+      if(String(r[0]||"").trim().toUpperCase()==="TOTAL"){
+        const t=parseFloat(r[2]);if(!isNaN(t))prevTotal=t;
+        const g=parseFloat(r[4]);if(!isNaN(g))prevGlobalMean=g;
+      }
+    });
+    if(Object.keys(levelMap).length===0)throw new Error("Aucun niveau de pertinence trouvé dans la feuille Recap");
+    // Fill missing levels with zeros
+    const recap=ORDER_LEVELS.map(lvl=>({
+      level:lvl,
+      count:levelMap[lvl]?.count??0,
+      pct:levelMap[lvl]?.pct??0,
+      rssiMean:levelMap[lvl]?.rssiMean??null,
+    }));
+    if(prevTotal==null)prevTotal=recap.reduce((s,r)=>s+r.count,0);
+    resolve({target:prevTarget,lieu:prevLieu,recap,total:prevTotal,globalMean:prevGlobalMean});
+  }catch(err){reject(err)}};
+  reader.onerror=()=>reject(new Error("Erreur lecture ancienne analyse"));
+  reader.readAsArrayBuffer(file);
+})}
+function renderTags(){const c=document.getElementById("tagsContainer");c.innerHTML=antennas.map(t=>`<span class="tag">${t}<span class="remove" onclick="removeTag('${t}')">×</span></span>`).join("");document.getElementById("antennaCount").textContent=antennas.length}
+function addTag(){const input=document.getElementById("tagInput");const val=input.value.trim().toUpperCase();if(val&&!antennas.includes(val)){antennas.push(val);renderTags()}input.value=""}
+function removeTag(t){antennas=antennas.filter(x=>x!==t);renderTags()}
+function clearConsole(){document.getElementById("console").innerHTML=""}
+function addLog(msg,type="info"){const c=document.getElementById("console");const d=document.createElement("div");d.className="log-line log-"+type;d.textContent=msg;c.appendChild(d);c.scrollTop=c.scrollHeight}
+
+// ── Analysis ──
+async function runAnalysis(){
+  clearConsole();weatherData=null;
+  document.getElementById("processTitle").textContent="Traitement en cours";
+  document.getElementById("processSub").textContent="Veuillez patienter pendant l'analyse des données.";
+  document.getElementById("processButtons").innerHTML="";
+  resultData=null;resultRecap=null;viewLevel=null;
+
+  try{
+    currentAnalysisDate=null;
+    // Extract date from new data file name (jjmm → jj-mm)
+    currentAnalysisDate=extractDateFromFilename(file1?.name);
+    if(currentAnalysisDate)addLog("Date nouvelle analyse détectée : "+currentAnalysisDate);
+    addLog("Lecture du fichier de données Sigfox...");
+    let data=await readXlsx(file1);
+    addLog("  "+data.length+" lignes chargées","success");
+    addLog("Lecture du référentiel devices...");
+    const devices=await readXlsx(file2);
+    addLog("  "+devices.length+" devices chargés","success");
+
+    if(!data[0].hasOwnProperty("Device ID"))throw new Error('Colonne "Device ID" introuvable');
+    if(!devices[0].hasOwnProperty("Id Sigfox"))throw new Error('Colonne "Id Sigfox" introuvable');
+    const missing=Object.values(COLS).filter(c=>!data[0].hasOwnProperty(c));
+    if(missing.length)throw new Error("Colonnes manquantes :\n"+missing.join("\n"));
+
+    addLog("Nettoyage Device ID...");
+    let modified=0;
+    data.forEach(row=>{const did=String(row["Device ID"]).trim();if(did.length>7){row["Device ID"]=did.substring(1);modified++}});
+    addLog("  "+modified+" identifiants modifiés","success");
+
+    addLog("Correspondance Device ID / Id Sigfox...");
+    const sigfoxIds=new Set(devices.map(d=>String(d["Id Sigfox"]).trim().toUpperCase()));
+    const before1=data.length;
+    data=data.filter(row=>sigfoxIds.has(String(row["Device ID"]).trim().toUpperCase()));
+    addLog("  "+(before1-data.length)+" lignes retirées, "+data.length+" conservées","success");
+
+    addLog("Dédoublonnage (meilleur RSSI1)...");
+    const grouped={};
+    data.forEach(row=>{const key=String(row["Device ID"]).trim().toUpperCase();if(!grouped[key])grouped[key]=[];grouped[key].push(row)});
+    const before2=data.length;
+    data=Object.values(grouped).map(rows=>{if(rows.length===1)return rows[0];return rows.reduce((best,row)=>{const rB=normRSSI(best[COLS.rssi1]),rR=normRSSI(row[COLS.rssi1]);if(rR==null)return best;if(rB==null)return row;return rR>rB?row:best})});
+    addLog("  "+(before2-data.length)+" doublons retirés, "+data.length+" uniques","success");
+
+    const target=document.getElementById("targetInput").value.trim().toUpperCase()||"9AD3";
+    addLog("Classification de pertinence (cible : "+target+")...");
+    const ourSet=new Set(antennas.map(a=>a.toUpperCase()));
+    data.forEach(row=>{row["Pertinence"]=classifyRow(row,ourSet)});
+
+    const descs=getLevelDescs(target);
+    const recap=ORDER_LEVELS.map(level=>{const rows=data.filter(r=>r["Pertinence"]===level);const vals=rows.map(r=>normRSSI(r[COLS.rssi1])).filter(v=>v!=null);const m=mean(vals);return{level,description:descs[level],count:rows.length,pct:data.length?Math.round(rows.length/data.length*10000)/100:0,rssiMean:m!=null?Math.round(m*100)/100:null}});
+    const allR1=data.map(r=>normRSSI(r[COLS.rssi1])).filter(v=>v!=null);
+    const gm=mean(allR1);
+    resultGlobalMean=gm!=null?Math.round(gm*100)/100:null;
+    resultTotal=data.length;resultData=data;resultRecap=recap;
+
+    addLog("Analyse terminée — "+data.length+" lignes classifiées.","success");
+
+    // ── Weather ──
+    const city=document.getElementById("cityInput").value.trim();
+    if(city){
+      addLog("Récupération de la météo pour "+city+"...");
+      try{
+        // Find the timestamp column (case-insensitive, flexible naming)
+        let tsKey=null;
+        if(data.length>0){
+          const keys=Object.keys(data[0]);
+          tsKey=keys.find(k=>k.toLowerCase()==="timestamp")
+            ||keys.find(k=>k.toLowerCase().includes("timestamp"))
+            ||keys.find(k=>k.toLowerCase().includes("date"))
+            ||keys.find(k=>k.toLowerCase().includes("time"));
+          if(tsKey)addLog("  Colonne date détectée : "+tsKey);
+        }
+        // Find latest date in data
+        let maxDate=null;
+        if(tsKey){
+          data.forEach(row=>{
+            const ts=row[tsKey];
+            if(ts==null||ts==="")return;
+            let d;
+            if(ts instanceof Date)d=ts;
+            else if(typeof ts==="number"){d=new Date(Math.round((ts-25569)*86400000))}
+            else{d=new Date(String(ts))}
+            if(d&&!isNaN(d.getTime())&&(maxDate==null||d>maxDate))maxDate=d;
+          });
+        }
+        if(!maxDate){
+          maxDate=new Date();
+          addLog("  Aucune date exploitable trouvée, utilisation de la date du jour","warn");
+        }
+        const endStr=maxDate.toISOString().split("T")[0];
+        addLog("  Période : 3 derniers jours jusqu'au "+endStr);
+        weatherData=await fetchWeather(city,endStr);
+        addLog("  Météo récupérée pour "+weatherData.cityName+" ("+weatherData.days.length+" jours)","success");
+        weatherData.days.forEach(d=>{
+          addLog("    "+d.date+" : "+d.weatherText+", "+d.tempMin+"°C / "+d.tempMax+"°C"+(d.hadRain?", pluie "+d.precipitation+"mm":""),"info");
+        });
+      }catch(wErr){
+        addLog("  Météo indisponible : "+wErr.message,"warn");
+        weatherData=null;
+      }
+    }else{
+      addLog("Pas de ville renseignée, météo ignorée.","warn");
+    }
+
+    document.getElementById("processTitle").textContent="Traitement terminé";
+    document.getElementById("processSub").textContent="L'analyse s'est déroulée avec succès.";
+    document.getElementById("processButtons").innerHTML='<div></div><button class="btn btn-primary" onclick="goStep(3);renderResults();">Voir les résultats</button>';
+
+  }catch(err){
+    addLog("Erreur : "+err.message,"error");
+    document.getElementById("processTitle").textContent="Erreur";
+    document.getElementById("processSub").textContent="Un problème est survenu.";
+    document.getElementById("processButtons").innerHTML='<button class="btn btn-ghost" onclick="goStep(0)">Recommencer</button><div></div>';
+  }
+}
+
+// ── Results ──
+function renderResults(){
+  if(!resultData)return;viewLevel=null;
+
+  // Weather section
+  let whtml="";
+  if(weatherData&&weatherData.days.length>0){
+    whtml=`<div class="weather-section"><div class="weather-title">Conditions météo — ${weatherData.cityName}</div><div class="weather-grid">`;
+    weatherData.days.forEach(d=>{
+      whtml+=`<div class="weather-day">
+        <div class="weather-day-header"><span class="weather-date">${d.dateFormatted}</span><span class="weather-icon">${d.weatherIcon}</span></div>
+        <div class="weather-summary">${d.weatherText}</div>
+        <div class="weather-stats">
+          <div class="weather-stat">Temp. min : <span>${d.tempMin}°C</span></div>
+          <div class="weather-stat">Temp. max : <span>${d.tempMax}°C</span></div>
+          <div class="weather-stat">Précipitations : <span>${d.precipitation} mm</span></div>
+          <div class="weather-stat">Pluie : <span>${d.hadRain?"Oui":"Non"}</span></div>
+          <div class="weather-stat">Humidité moy. : <span>${d.humidity!=null?d.humidity+"%":"—"}</span></div>
+          <div class="weather-stat">Vent max : <span>${d.windMax} km/h</span></div>
+        </div>
+      </div>`;
+    });
+    whtml+=`</div></div>`;
+  }
+  document.getElementById("weatherSection").innerHTML=whtml;
+
+  document.getElementById("summaryGrid").innerHTML=`<div class="summary-card"><div class="value">${resultTotal}</div><div class="label">Lignes analysées</div></div><div class="summary-card sc-highlight"><div class="value">${resultGlobalMean??'N/A'}<span class="unit">dBm</span></div><div class="label">RSSI1 moyen global</div></div><div class="summary-card"><div class="value">${antennas.length}</div><div class="label">Antennes du parc</div></div>`;
+
+  let rows=resultRecap.map(r=>`<tr><td><span class="badge" style="background:${LEVEL_COLORS[r.level]};color:#fff">${r.level}</span></td><td style="font-size:12px;color:#6b7280">${r.description}</td><td class="right" style="font-weight:600">${r.count}</td><td class="right">${r.pct}%</td><td class="right mono">${r.rssiMean??'—'}</td><td class="center">${r.count>0?`<button class="btn-detail" onclick="toggleDetail('${r.level}',this)">Détails</button>`:''}</td></tr>`).join("");
+  rows+=`<tr class="total"><td>Total</td><td></td><td class="right">${resultTotal}</td><td class="right">100%</td><td class="right mono">${resultGlobalMean??'—'}</td><td></td></tr>`;
+  document.getElementById("recapTable").innerHTML=`<table><thead><tr><th>Niveau</th><th>Description</th><th class="right">Lignes</th><th class="right">%</th><th class="right">RSSI1 moy.</th><th class="center">Actions</th></tr></thead><tbody>${rows}</tbody></table>`;
+  document.getElementById("detailView").innerHTML="";
+}
+
+function toggleDetail(level,btn){const dv=document.getElementById("detailView");if(viewLevel===level){viewLevel=null;dv.innerHTML="";btn.className="btn-detail";btn.textContent="Détails";return}document.querySelectorAll(".btn-detail").forEach(b=>{b.className="btn-detail";b.textContent="Détails"});viewLevel=level;btn.className="btn-detail btn-detail-on";btn.textContent="Masquer";const filtered=resultData.filter(r=>r["Pertinence"]===level);const colKeys=["Device ID",COLS.sid1,COLS.rssi1,COLS.sid2,COLS.rssi2,COLS.sid3,COLS.rssi3,COLS.sid4,COLS.rssi4];const colNames=colKeys.map(c=>c.replace(" (Receiver info)",""));let thead=colNames.map(c=>`<th>${c}</th>`).join("");let tbody=filtered.slice(0,200).map(r=>`<tr>${colKeys.map(c=>`<td${c.includes("RSSI")?' class="mono"':''}>${r[c]??""}</td>`).join("")}</tr>`).join("");dv.innerHTML=`<div class="detail-wrap"><div class="detail-header" style="background:${LEVEL_COLORS[level]}"><span>${level} — ${filtered.length} lignes</span><button class="btn-close-detail" onclick="toggleDetail('${level}',document.querySelector('.btn-detail-on'))">Fermer</button></div><div class="detail-body"><table><thead><tr>${thead}</tr></thead><tbody>${tbody}</tbody></table></div></div>`}
+
+// ── Donut chart ──
+function drawDonutChart(){
+  const canvas=document.getElementById("chartCanvas");const ctx=canvas.getContext("2d");
+  canvas.width=600;canvas.height=480;ctx.clearRect(0,0,600,480);ctx.fillStyle="#fff";ctx.fillRect(0,0,600,480);
+  const data=resultRecap.filter(r=>r.count>0);const total=data.reduce((s,r)=>s+r.count,0);
+  if(total===0)return canvas;
+  const cx=200,cy=210,outerR=150,innerR=85;
+  const colors={"Indispensable":"#C0392B","Pertinence +++":"#E67E22","Pertinence ++":"#F1C40F","Pertinence +":"#2980B9","Non Pertinent":"#95A5A6","Pertinence à déterminer":"#8E44AD"};
+  let startAngle=-Math.PI/2;const slices=[];
+  data.forEach(r=>{const sweep=(r.count/total)*2*Math.PI;const mid=startAngle+sweep/2;slices.push({...r,startAngle,sweep,mid,color:colors[r.level]||"#999"});startAngle+=sweep});
+  slices.forEach(s=>{ctx.beginPath();ctx.arc(cx,cy,outerR,s.startAngle,s.startAngle+s.sweep);ctx.arc(cx,cy,innerR,s.startAngle+s.sweep,s.startAngle,true);ctx.closePath();ctx.fillStyle=s.color;ctx.fill()});
+  ctx.textAlign="center";ctx.textBaseline="middle";
+  slices.forEach(s=>{if(s.pct<3)return;const lr=(outerR+innerR)/2;const lx=cx+Math.cos(s.mid)*lr;const ly=cy+Math.sin(s.mid)*lr;ctx.fillStyle="#fff";ctx.font="bold 14px Segoe UI";ctx.fillText(s.count,lx,ly-8);ctx.font="11px Segoe UI";ctx.fillText(s.pct.toFixed(0)+"%",lx,ly+8)});
+  ctx.fillStyle="#2C3E50";ctx.font="bold 15px Segoe UI";ctx.textAlign="center";ctx.fillText("Répartition par niveau de pertinence",300,30);
+  ctx.textAlign="left";slices.forEach((s,i)=>{const y=80+i*32;ctx.fillStyle=s.color;ctx.fillRect(400,y,14,14);ctx.fillStyle="#2C3E50";ctx.font="13px Segoe UI";ctx.fillText(s.level,422,y+11)});
+  return canvas;
+}
+
+// ── Export Excel ──
+async function exportExcel(){
+  if(!resultData||!resultRecap)return;
+  const wb=new ExcelJS.Workbook();wb.creator="Sigfox Pertinence Analyzer";
+  const headerFill={type:'pattern',pattern:'solid',fgColor:{argb:'FF2C3E50'}};
+  const headerFont={bold:true,color:{argb:'FFFFFFFF'},size:11,name:'Segoe UI'};
+  const thinBorder={top:{style:'thin',color:{argb:'FFD5D8DC'}},bottom:{style:'thin',color:{argb:'FFD5D8DC'}},left:{style:'thin',color:{argb:'FFD5D8DC'}},right:{style:'thin',color:{argb:'FFD5D8DC'}}};
+
+  // All data sheet
+  const wsAll=wb.addWorksheet("Toutes_les_donnees");
+  const allCols=Object.keys(resultData[0]||{});
+  wsAll.addRow(allCols).eachCell(c=>{c.fill=headerFill;c.font={bold:true,color:{argb:'FFFFFFFF'},size:10};c.alignment={horizontal:'center'}});
+  resultData.forEach(row=>{wsAll.addRow(allCols.map(k=>row[k]??""))});
+  allCols.forEach((c,i)=>{wsAll.getColumn(i+1).width=Math.min(Math.max(c.length+4,12),40)});
+
+  // Recap sheet
+  const ws=wb.addWorksheet("Recap");
+  const target=document.getElementById("targetInput").value.trim().toUpperCase()||"9AD3";
+  const lieu=document.getElementById("lieuInput").value.trim();
+  const descs=getLevelDescs(target);
+
+  // Info block: Antenne + Lieu
+  const infoFont={bold:true,size:12,name:'Segoe UI',color:{argb:'FF2C3E50'}};
+  const infoValFont={size:12,name:'Segoe UI',color:{argb:'FF333333'}};
+
+  const r1=ws.addRow(["Antenne cible :",target,"","Lieu :",lieu||"Non renseigné"]);
+  r1.height=28;
+  r1.getCell(1).font=infoFont;r1.getCell(2).font=infoValFont;
+  r1.getCell(4).font=infoFont;r1.getCell(5).font=infoValFont;
+
+  ws.addRow([]);// blank row
+
+  const headers=["Niveau","Description","Nombre de lignes","Pourcentage (%)","RSSI1 moyen"];
+  const hRow=ws.addRow(headers);hRow.height=32;
+  hRow.eachCell(cell=>{cell.fill=headerFill;cell.font=headerFont;cell.alignment={horizontal:'center',vertical:'middle'};cell.border=thinBorder});
+
+  resultRecap.forEach((r,i)=>{
+    const row=ws.addRow([LEVEL_SYMBOLS[r.level]+" "+r.level,r.description,r.count,r.pct/100,r.rssiMean??""]);
+    row.height=30;const hex=LEVEL_HEX[r.level]||"95A5A6";
+    row.getCell(1).font={bold:true,color:{argb:'FF'+hex},size:11,name:'Segoe UI'};row.getCell(1).alignment={vertical:'middle'};row.getCell(1).border=thinBorder;
+    row.getCell(2).font={size:10,name:'Segoe UI',color:{argb:'FF555555'}};row.getCell(2).alignment={vertical:'middle',wrapText:true};row.getCell(2).border=thinBorder;
+    row.getCell(3).font={bold:true,size:11};row.getCell(3).alignment={horizontal:'center',vertical:'middle'};row.getCell(3).border=thinBorder;
+    row.getCell(4).numFmt='0.00%';row.getCell(4).font={bold:true,size:11};row.getCell(4).alignment={horizontal:'center',vertical:'middle'};row.getCell(4).border=thinBorder;
+    row.getCell(5).numFmt='0.00';row.getCell(5).font={size:11};row.getCell(5).alignment={horizontal:'center',vertical:'middle'};row.getCell(5).border=thinBorder;
+    if(i%2===1){for(let c=1;c<=5;c++)row.getCell(c).fill={type:'pattern',pattern:'solid',fgColor:{argb:'FFF8F9FA'}}}
+  });
+
+  const totRow=ws.addRow(["TOTAL","",resultTotal,1,resultGlobalMean??""]);totRow.height=32;
+  for(let c=1;c<=5;c++){totRow.getCell(c).fill=headerFill;totRow.getCell(c).font=headerFont;totRow.getCell(c).alignment={horizontal:'center',vertical:'middle'};totRow.getCell(c).border=thinBorder}
+  totRow.getCell(4).numFmt='0.00%';totRow.getCell(5).numFmt='0.00';
+
+  ws.getColumn(1).width=24;ws.getColumn(2).width=62;ws.getColumn(3).width=18;ws.getColumn(4).width=16;ws.getColumn(5).width=16;
+
+  // Side recap (offset by 2 for info block)
+  const sc=7,sro=2;
+  ws.getCell(1+sro,sc).value="Niveau";ws.getCell(1+sro,sc).fill=headerFill;ws.getCell(1+sro,sc).font=headerFont;ws.getCell(1+sro,sc).border=thinBorder;ws.getCell(1+sro,sc).alignment={horizontal:'center',vertical:'middle'};
+  ws.getCell(1+sro,sc+1).value="Lignes";ws.getCell(1+sro,sc+1).fill=headerFill;ws.getCell(1+sro,sc+1).font=headerFont;ws.getCell(1+sro,sc+1).border=thinBorder;ws.getCell(1+sro,sc+1).alignment={horizontal:'center',vertical:'middle'};
+  resultRecap.forEach((r,i)=>{
+    ws.getCell(i+2+sro,sc).value=r.level;ws.getCell(i+2+sro,sc).font={size:10};ws.getCell(i+2+sro,sc).border=thinBorder;
+    ws.getCell(i+2+sro,sc+1).value=r.count;ws.getCell(i+2+sro,sc+1).font={bold:true,size:10};ws.getCell(i+2+sro,sc+1).border=thinBorder;ws.getCell(i+2+sro,sc+1).alignment={horizontal:'center'};
+  });
+  ws.getColumn(sc).width=24;ws.getColumn(sc+1).width=10;
+
+  // Donut chart image
+  const canvas=drawDonutChart();const base64=canvas.toDataURL("image/png").split(",")[1];
+  const imgId=wb.addImage({base64,extension:'png'});
+  ws.addImage(imgId,{tl:{col:0,row:resultRecap.length+3},ext:{width:560,height:440}});
+
+  // ── Weather sheet in Recap ──
+  if(weatherData&&weatherData.days.length>0){
+    const wStartRow=resultRecap.length+3+24;// after chart
+    ws.getCell(wStartRow,1).value="Conditions météo — "+weatherData.cityName;
+    ws.getCell(wStartRow,1).font={bold:true,size:14,name:'Segoe UI',color:{argb:'FF2C3E50'}};
+    ws.mergeCells(wStartRow,1,wStartRow,5);
+
+    const wHdrRow=ws.getRow(wStartRow+1);
+    ["Date","Conditions","Temp. min (°C)","Temp. max (°C)","Précipitations (mm)","Pluie","Humidité (%)","Vent max (km/h)"].forEach((h,i)=>{
+      const cell=wHdrRow.getCell(i+1);cell.value=h;cell.fill=headerFill;cell.font=headerFont;cell.alignment={horizontal:'center',vertical:'middle'};cell.border=thinBorder;
+    });
+    wHdrRow.height=28;
+
+    weatherData.days.forEach((d,i)=>{
+      const row=ws.getRow(wStartRow+2+i);row.height=26;
+      [d.dateFormatted,d.weatherIcon+" "+d.weatherText,d.tempMin,d.tempMax,d.precipitation,d.hadRain?"Oui":"Non",d.humidity!=null?d.humidity:"—",d.windMax].forEach((v,ci)=>{
+        const cell=row.getCell(ci+1);cell.value=v;cell.border=thinBorder;
+        cell.alignment={horizontal:'center',vertical:'middle'};
+        cell.font={size:10,name:'Segoe UI'};
+        if(i%2===1)cell.fill={type:'pattern',pattern:'solid',fgColor:{argb:'FFF8F9FA'}};
+      });
+    });
+
+    for(let c=6;c<=8;c++)ws.getColumn(c).width=16;
+  }
+
+  // Per-level sheets
+  ORDER_LEVELS.forEach(level=>{
+    const rows=resultData.filter(r=>r["Pertinence"]===level);if(!rows.length)return;
+    const wsL=wb.addWorksheet(LEVEL_TO_SHEET[level]);const cols=Object.keys(rows[0]);
+    wsL.addRow(cols).eachCell(c=>{c.fill=headerFill;c.font={bold:true,color:{argb:'FFFFFFFF'},size:10};c.alignment={horizontal:'center'}});
+    rows.forEach(r=>{wsL.addRow(cols.map(k=>r[k]??""))});
+    cols.forEach((c,i)=>{wsL.getColumn(i+1).width=Math.min(Math.max(c.length+4,12),40)});
+  });
+
+  const buffer=await wb.xlsx.writeBuffer();
+  saveAs(new Blob([buffer],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}),"donnees_avec_pertinence.xlsx");
+}
+
+function resetAll(){file1=null;file2=null;currentAnalysisDate=null;resultData=null;resultRecap=null;viewLevel=null;weatherData=null;["drop1","drop2"].forEach(id=>{const el=document.getElementById(id);if(el){el.classList.remove("has-file");el.querySelector(".icon").innerHTML="&#128196;"}});["fname1","fname2"].forEach(id=>{const el=document.getElementById(id);if(el)el.textContent=""});["input1","input2"].forEach(id=>{const el=document.getElementById(id);if(el)el.value=""});document.getElementById("btnNext0").disabled=true;document.getElementById("weatherSection").innerHTML="";const sb=document.getElementById("btnSaveHist");if(sb){sb.classList.remove("saved");sb.disabled=false;sb.innerHTML='<span class="saved-check">✓ </span>💾 Sauvegarder dans l\'historique'}goStep(0)}
+// ═══════════════════════════════════════════════════
+// HISTORY SYSTEM — Shared JSON file + localStorage cache
+// ═══════════════════════════════════════════════════
+
+const HIST_KEY="sigfox_pertinence_history";
+const HIST_FILENAME="historique_sigfox.json";
+const CONTRACTS=["3CM","COLOMBIER","SIAEPA","TOUSSIEU","VRVJ","DIJON"];
+const CONTRACTS_KEY="sigfox_antenna_contracts";
+let historyCache=[];// in-memory cache
+let historyDirty=false;// true if local changes not yet saved to file
+let contractMap={};// {antennaId: contractName}
+
+// ── Contract mapping ──
+function getContractMap(){return contractMap}
+function setContractMap(m){
+  contractMap=m;
+  localStorage.setItem(CONTRACTS_KEY,JSON.stringify(m));
+}
+function loadContractMapFromCache(){
+  try{contractMap=JSON.parse(localStorage.getItem(CONTRACTS_KEY)||"{}")}catch(e){contractMap={}}
+}
+function getAntennaContract(target){
+  const v=contractMap[target];
+  if(!v)return null;
+  if(typeof v==="string")return v;// legacy format
+  return v.contract||null;
+}
+function getAntennaLieu(target){
+  const v=contractMap[target];
+  if(!v)return "";
+  if(typeof v==="string")return "";// legacy format has no lieu
+  return v.lieu||"";
+}
+function setAntennaContract(target,contract){
+  const existing=contractMap[target];
+  const lieu=(existing&&typeof existing==="object")?existing.lieu||"":"";
+  contractMap[target]={contract,lieu};
+  setContractMap(contractMap);
+  historyDirty=true;
+  updateSyncStatus("warn","Non synchronisé");
+}
+function setAntennaLieu(target,lieu){
+  const existing=contractMap[target];
+  if(existing&&typeof existing==="object"){
+    existing.lieu=lieu;
+  }else{
+    const contract=(typeof existing==="string")?existing:"";
+    contractMap[target]={contract,lieu};
+  }
+  setContractMap(contractMap);
+  historyDirty=true;
+}
+
+// ── Storage: localStorage as cache, JSON file as shared source ──
+function getHistory(){return historyCache}
+function setHistory(h){
+  historyCache=h;
+  localStorage.setItem(HIST_KEY,JSON.stringify(h));
+  historyDirty=true;
+  updateSyncStatus("warn","Non synchronisé");
+}
+
+// Load from localStorage cache on startup
+function loadFromCache(){
+  try{historyCache=JSON.parse(localStorage.getItem(HIST_KEY)||"[]")}catch(e){historyCache=[]}
+  loadContractMapFromCache();
+}
+
+// Load from shared JSON file via file input (no fetch — works with file:// protocol)
+function loadFromSharedFile(){
+  // Trigger file picker for the JSON
+  return new Promise((resolve)=>{
+    const input=document.createElement("input");
+    input.type="file";input.accept=".json";
+    input.onchange=e=>{
+      const file=e.target.files[0];
+      if(!file){resolve(false);return}
+      const reader=new FileReader();
+      reader.onload=ev=>{
+        try{
+          const data=JSON.parse(ev.target.result);
+          if(Array.isArray(data)){
+            historyCache=data;
+          }else if(data&&Array.isArray(data.entries)){
+            historyCache=data.entries;
+            if(data.contracts&&typeof data.contracts==="object"){
+              contractMap=data.contracts;
+              localStorage.setItem(CONTRACTS_KEY,JSON.stringify(contractMap));
+            }
+          }else{throw new Error("Format invalide")}
+          localStorage.setItem(HIST_KEY,JSON.stringify(historyCache));
+          historyDirty=false;
+          updateSyncStatus("ok","Synchronisé");
+          resolve(true);
+        }catch(err){
+          alert("Erreur de lecture du fichier JSON :\n"+err.message);
+          resolve(false);
+        }
+      };
+      reader.onerror=()=>{alert("Erreur de lecture du fichier.");resolve(false)};
+      reader.readAsText(file);
+    };
+    input.click();
+  });
+}
+
+// Save: download JSON file for user to place in shared folder
+function saveSharedFile(){
+  const payload={entries:getHistory(),contracts:getContractMap()};
+  const blob=new Blob([JSON.stringify(payload,null,2)],{type:"application/json"});
+  saveAs(blob,HIST_FILENAME);
+  historyDirty=false;
+  updateSyncStatus("ok","Synchronisé");
+}
+
+function updateSyncStatus(state,label){
+  const el=document.getElementById("syncStatus");
+  const lb=document.getElementById("syncLabel");
+  if(!el||!lb)return;
+  el.className="sync-status "+state;
+  lb.textContent=label;
+}
+
+function saveToHistory(){
+  if(!resultData||!resultRecap)return;
+  const target=document.getElementById("targetInput").value.trim().toUpperCase()||"9AD3";
+  const lieu=document.getElementById("lieuInput").value.trim();
+  const contract=document.getElementById("contractInput").value;
+  if(!contract){alert("Veuillez sélectionner un contrat dans les paramètres avant de sauvegarder.");return}
+  const dateLabel=currentAnalysisDate||new Date().toLocaleDateString("fr-FR",{day:"2-digit",month:"2-digit"}).replace("/","-");
+  const entry={
+    id:Date.now().toString(36)+Math.random().toString(36).slice(2,6),
+    target,contract,lieu,date:dateLabel,
+    savedAt:new Date().toISOString(),
+    total:resultTotal,
+    globalMean:resultGlobalMean,
+    recap:resultRecap.map(r=>({level:r.level,count:r.count,pct:r.pct,rssiMean:r.rssiMean})),
+    comment:""
+  };
+  const h=getHistory();
+  // Check for duplicate (same target+date)
+  const dup=h.findIndex(e=>e.target===target&&e.date===dateLabel);
+  if(dup>=0){
+    if(!confirm(`Une analyse pour ${target} à la date ${dateLabel} existe déjà. Voulez-vous la remplacer ?`))return;
+    h[dup]=entry;
+  }else{h.push(entry)}
+  setHistory(h);
+  // Save contract + lieu assignment
+  setAntennaContract(target,contract);
+  if(lieu)setAntennaLieu(target,lieu);
+  const btn=document.getElementById("btnSaveHist");
+  btn.classList.add("saved");btn.disabled=true;
+  btn.innerHTML='<span class="saved-check" style="display:inline">✓ </span> Sauvegardé';
+  setTimeout(()=>{btn.disabled=false},2000);
+  // Offer to save shared file
+  if(confirm("Analyse sauvegardée dans l'historique local.\n\nVoulez-vous télécharger le fichier partagé maintenant ?\n(Enregistrez-le dans le même dossier que cette page pour le partager avec vos collègues)")){
+    saveSharedFile();
+  }
+}
+
+// ── History UI ──
+let histViewAntenna=null;
+let histViewContract=null;
+let histViewAntennaContract=null;// contract-filter applied to antenna view
+let chartActiveLevels=new Set(ORDER_LEVELS);// which levels are shown on chart
+
+function openHistory(){
+  histViewAntenna=null;
+  histViewContract=null;
+  document.getElementById("historyOverlay").classList.add("open");
+  document.body.style.overflow="hidden";
+  renderHistoryContracts();
+}
+function closeHistory(){
+  document.getElementById("historyOverlay").classList.remove("open");
+  document.body.style.overflow="";
+}
+
+// ── Sync banner HTML (reused) ──
+function syncBannerHtml(){
+  return '<div class="sync-banner">💡 <div><strong>Historique partagé :</strong> Pour synchroniser avec vos collègues, utilisez le fichier <code>'+HIST_FILENAME+'</code> dans votre dossier réseau partagé.'
+  +' <strong>Recharger</strong> = ouvrir le fichier JSON partagé. <strong>Enregistrer</strong> = télécharger le fichier mis à jour (à remettre dans le dossier partagé).'
+  +'<br><div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap">'
+  +'<button class="btn-sm" onclick="reloadSharedHistory()" style="background:#2563eb;color:#fff;border-color:#2563eb">🔄 Recharger (ouvrir .json)</button>'
+  +'<button class="btn-sm" onclick="saveSharedFile()" style="background:#16a34a;color:#fff;border-color:#16a34a">💾 Enregistrer (télécharger .json)</button>'
+  +'</div></div></div>';
+}
+
+function actionButtonsHtml(){
+  return '<div class="hp-actions">'
+  +'<button class="btn-sm" onclick="document.getElementById(\'histImportXlsx\').click()">📂 Importer depuis export(s) .xlsx</button>'
+  +'<input type="file" id="histImportXlsx" accept=".xlsx" multiple style="display:none" onchange="importFromXlsx(event)"/>'
+  +'<button class="btn-sm" onclick="document.getElementById(\'histImportInput\').click()">📤 Importer un historique (.json)</button>'
+  +'<input type="file" id="histImportInput" accept=".json" style="display:none" onchange="importHistory(event)"/>'
+  +'<button class="btn-sm danger" onclick="clearAllHistory()">🗑 Tout effacer</button>'
+  +'</div>';
+}
+
+// ── Level 1: Contracts view ──
+function renderHistoryContracts(){
+  histViewContract=null;histViewAntenna=null;
+  const body=document.getElementById("hpBody");
+  document.getElementById("hpTitle").textContent="Historique des analyses";
+  const h=getHistory();
+
+  let html=syncBannerHtml()+actionButtonsHtml();
+
+  if(!h.length){
+    html+='<div class="hp-empty"><div class="em">📭</div><p>Aucune analyse sauvegardée pour le moment.<br>Lancez une analyse puis cliquez sur <strong>\"Sauvegarder dans l\'historique\"</strong>.<br>Ou importez vos exports .xlsx existants.</p></div>';
+    body.innerHTML=html;return;
+  }
+
+  // Count (contract, antenna) unique pairs based on each entry's own contract
+  const antennasPerContract={};
+  const unassigned=[];
+  CONTRACTS.forEach(c=>{antennasPerContract[c]=new Set()});
+  h.forEach(e=>{
+    const c=e.contract||getAntennaContract(e.target);// fallback for legacy entries
+    if(c&&antennasPerContract[c]){antennasPerContract[c].add(e.target)}
+    else{
+      // Legacy entry without contract: use global mapping or unassigned
+      const g=getAntennaContract(e.target);
+      if(g&&antennasPerContract[g]){antennasPerContract[g].add(e.target)}
+      else if(!unassigned.includes(e.target))unassigned.push(e.target);
+    }
+  });
+
+  html+='<div class="contract-list">';
+  CONTRACTS.forEach(c=>{
+    const count=antennasPerContract[c].size;
+    html+=`<div class="contract-card" onclick="viewContractAntennas('${c}')">
+      <div class="contract-card-icon">📡</div>
+      <div class="contract-card-name">${c}</div>
+      <div class="contract-card-count">${count} antenne${count>1?'s':''}</div>
+    </div>`;
+  });
+  html+='</div>';
+
+  // Show unassigned antennas if any
+  if(unassigned.length>0){
+    html+='<div style="margin-top:10px;padding:14px 16px;background:#fef2f2;border:1px solid #fca5a5;border-radius:8px">';
+    html+='<div style="font-size:13px;font-weight:700;color:#dc2626;margin-bottom:8px">⚠ Antennes non assignées ('+unassigned.length+')</div>';
+    html+='<div style="font-size:12px;color:#78350f;margin-bottom:10px">Assignez chaque antenne à un contrat pour l\'organiser dans l\'historique.</div>';
+    html+='<div style="display:flex;flex-wrap:wrap;gap:8px">';
+    unassigned.forEach(t=>{
+      const entries=h.filter(e=>e.target===t);
+      html+=`<div style="background:#fff;border:1px solid #e5e7eb;border-radius:6px;padding:8px 12px;display:flex;align-items:center;gap:8px">
+        <span style="font-weight:700;font-family:monospace">${t}</span>
+        <span style="color:#9ca3af;font-size:11px">(${entries.length})</span>
+        <select class="assign-select" onchange="assignAntennaContract('${t}',this.value)">
+          <option value="">— Contrat —</option>
+          ${CONTRACTS.map(c=>`<option value="${c}">${c}</option>`).join("")}
+        </select>
+      </div>`;
+    });
+    html+='</div></div>';
+  }
+
+  body.innerHTML=html;
+}
+
+function assignAntennaContract(target,contract){
+  if(!contract)return;
+  setAntennaContract(target,contract);
+  renderHistoryContracts();
+}
+
+// ── Level 2: Antennas in a contract ──
+function viewContractAntennas(contract){
+  histViewContract=contract;histViewAntenna=null;
+  const body=document.getElementById("hpBody");
+  document.getElementById("hpTitle").textContent="Contrat "+contract;
+  const h=getHistory();
+
+  // Get antennas that have at least one entry with this contract (per-entry)
+  // Support legacy entries without contract by falling back to global mapping
+  const antsInContract=[...new Set(h.filter(e=>{
+    const c=e.contract||getAntennaContract(e.target);
+    return c===contract;
+  }).map(e=>e.target))];
+
+  let html='<div class="hist-breadcrumb"><a onclick="renderHistoryContracts()">Tous les contrats</a><span class="sep">›</span><strong>'+contract+'</strong></div>';
+
+  if(!antsInContract.length){
+    html+='<div class="hp-empty"><div class="em">📭</div><p>Aucune antenne assignée à ce contrat pour le moment.</p></div>';
+    body.innerHTML=html;return;
+  }
+
+  html+='<div class="ant-list">';
+  antsInContract.sort().forEach(t=>{
+    // Only count entries for this antenna that were in this specific contract
+    const entries=h.filter(e=>e.target===t&&(e.contract||getAntennaContract(e.target))===contract);
+    const latestLieu=entries.reduce((l,e)=>e.lieu||l,"")||getAntennaLieu(t);
+    html+=`<div class="ant-card" onclick="viewAntennaHistory('${t}','${contract}')">
+      <div class="ant-card-id">${t}</div>
+      <div class="ant-card-lieu">${latestLieu||"—"}</div>
+      <div class="ant-card-count">${entries.length} analyse${entries.length>1?'s':''}</div>
+    </div>`;
+  });
+  html+='</div>';
+  body.innerHTML=html;
+}
+
+// ── Level 3: Antenna detail (chart + table + compare) ──
+function viewAntennaHistory(target,contract){
+  histViewAntenna=target;
+  histViewAntennaContract=contract||null;
+  chartActiveLevels=new Set(ORDER_LEVELS);// reset filters
+  const body=document.getElementById("hpBody");
+  let h=getHistory().filter(e=>e.target===target);
+  // If a contract is specified, filter entries that belong to that contract
+  if(contract){
+    h=h.filter(e=>(e.contract||getAntennaContract(e.target))===contract);
+  }
+  // Sort by date: parse dd-mm, sort ascending for chart (oldest left, newest right)
+  h.sort((a,b)=>sortDateAsc(a.date,b.date));
+  if(!h.length){renderHistoryContracts();return}
+
+  const displayContract=contract||h[0].contract||getAntennaContract(target);
+  document.getElementById("hpTitle").textContent="Antenne "+target+(displayContract?" — "+displayContract:"");
+
+  let html='<div class="hist-breadcrumb">';
+  html+='<a onclick="renderHistoryContracts()">Contrats</a><span class="sep">›</span>';
+  if(displayContract){html+=`<a onclick="viewContractAntennas('${displayContract}')">${displayContract}</a><span class="sep">›</span>`}
+  html+='<strong>'+target+'</strong>';
+  const antennaLieu=h[h.length-1].lieu||getAntennaLieu(target)||"";
+  if(antennaLieu)html+=' <span style="color:#6b7280;font-weight:400">— '+antennaLieu+'</span>';
+  html+='</div>';
+
+  // ── Level filter toggles ──
+  html+='<div class="level-filters" id="levelFilters">';
+  ORDER_LEVELS.forEach(l=>{
+    const on=chartActiveLevels.has(l);
+    const short=l.replace("Pertinence ","P").replace("à déterminer","?");
+    html+=`<button class="level-toggle${on?' on':''}" style="${on?'background:'+LEVEL_COLORS[l]+';color:#fff;border-color:'+LEVEL_COLORS[l]:''}" onclick="toggleChartLevel('${l}','${target}','${displayContract||''}')">${short}</button>`;
+  });
+  html+='</div>';
+
+  // ── Chart ──
+  html+='<div class="hist-chart-wrap"><div class="hist-chart-title">Évolution par niveau de pertinence</div><canvas id="histChart" class="hist-chart"></canvas></div>';
+
+  // ── Table (newest first = reversed) ──
+  const hDesc=[...h].reverse();// newest on top
+  html+='<div class="hist-table-wrap"><table class="hist-table"><thead><tr><th>Date</th>';
+  ORDER_LEVELS.forEach(l=>{html+=`<th style="color:${LEVEL_COLORS[l]}">${l.replace("Pertinence ","P").replace("à déterminer","?")}</th>`});
+  html+='<th>Total</th><th>RSSI moy.</th><th>Commentaire</th><th></th></tr></thead><tbody>';
+  hDesc.forEach(e=>{
+    html+=`<tr><td style="font-family:'Cascadia Code','Consolas',monospace">${e.date}</td>`;
+    ORDER_LEVELS.forEach(l=>{
+      const r=e.recap.find(r=>r.level===l);
+      html+=`<td>${r?r.count+' <span style="color:#9ca3af;font-size:10px">('+r.pct+'%)</span>':'—'}</td>`;
+    });
+    html+=`<td style="font-weight:700">${e.total}</td>`;
+    html+=`<td style="font-family:monospace">${e.globalMean!=null?e.globalMean.toFixed(2):'—'}</td>`;
+    html+=`<td class="comment-cell" title="${(e.comment||'').replace(/"/g,'&quot;')}">${e.comment||'<span style="color:#d1d5db">—</span>'}</td>`;
+    html+=`<td style="white-space:nowrap"><button class="btn-comment" onclick="editComment('${e.id}')">✏️</button> <button class="btn-del" onclick="deleteEntry('${e.id}')" title="Supprimer">×</button></td>`;
+    html+='</tr>';
+  });
+  html+='</tbody></table></div>';
+
+  // ── Compare section ──
+  if(h.length>=2){
+    const hForSelect=[...h].reverse();// newest first in selectors
+    html+='<div class="compare-section"><h4>Comparaison entre deux dates</h4><div class="compare-row">';
+    html+='<select id="cmpA" onchange="runCompare()">';
+    hForSelect.forEach((e,i)=>{html+=`<option value="${e.id}"${i===1?' selected':''}>${e.date}</option>`});
+    html+='</select><span style="color:#6b7280;font-weight:600">vs</span><select id="cmpB" onchange="runCompare()">';
+    hForSelect.forEach((e,i)=>{html+=`<option value="${e.id}"${i===0?' selected':''}>${e.date}</option>`});
+    html+='</select></div><div class="compare-result" id="cmpResult"></div></div>';
+  }
+
+  // ── Legend ──
+  html+='<div style="margin-top:20px;padding:16px 18px;background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px">';
+  html+='<div style="font-size:13px;font-weight:700;color:#111827;margin-bottom:10px">Définition des niveaux de pertinence</div>';
+  const t=target;
+  const legendItems=[
+    {level:"Indispensable",desc:`Capté uniquement par ${t} avec un signal exploitable (RSSI > −130 dBm). Sans cette antenne, le device est perdu.`},
+    {level:"Pertinence +++",desc:`Capté par plusieurs antennes, mais ${t} a le meilleur signal. C'est l'antenne la plus performante pour ce device.`},
+    {level:"Pertinence ++",desc:`${t} n'a pas le meilleur signal, et les antennes mieux placées ne font pas partie de notre parc.`},
+    {level:"Pertinence +",desc:`${t} n'a pas le meilleur signal, mais au moins une autre antenne de notre parc capte aussi ce device.`},
+    {level:"Non Pertinent",desc:`Le signal de ${t} est nul (RSSI ≤ −130 dBm). L'antenne n'apporte rien pour ce device.`},
+    {level:"Pertinence à déterminer",desc:`Capté uniquement par ${t}, mais avec un signal nul (RSSI ≤ −130 dBm). Pertinence incertaine.`},
+  ];
+  legendItems.forEach(item=>{
+    html+=`<div style="display:flex;align-items:baseline;gap:8px;margin-bottom:6px;font-size:12px;line-height:1.5">
+      <span style="color:${LEVEL_COLORS[item.level]};font-weight:700;white-space:nowrap;min-width:130px">${item.level}</span>
+      <span style="color:#4b5563">${item.desc}</span>
+    </div>`;
+  });
+  html+='</div>';
+
+  html+='</div>';
+  body.innerHTML=html;
+
+  // Draw chart after DOM is ready
+  setTimeout(()=>{drawHistChart(h)},50);
+  if(h.length>=2)setTimeout(()=>{runCompare()},100);
+}
+
+// Date sort helper: dd-mm → comparable (mm*100+dd)
+function parseDateVal(d){
+  if(!d||d==="??-??")return 0;
+  const parts=d.split("-");
+  if(parts.length!==2)return 0;
+  const dd=parseInt(parts[0])||0,mm=parseInt(parts[1])||0;
+  return mm*100+dd;
+}
+function sortDateAsc(a,b){return parseDateVal(a)-parseDateVal(b)}
+
+// Toggle level on chart
+function toggleChartLevel(level,target,contract){
+  if(chartActiveLevels.has(level))chartActiveLevels.delete(level);
+  else chartActiveLevels.add(level);
+  // Re-render filters + chart only (not whole view)
+  const filtersDiv=document.getElementById("levelFilters");
+  if(filtersDiv){
+    let fhtml='';
+    ORDER_LEVELS.forEach(l=>{
+      const on=chartActiveLevels.has(l);
+      const short=l.replace("Pertinence ","P").replace("à déterminer","?");
+      fhtml+=`<button class="level-toggle${on?' on':''}" style="${on?'background:'+LEVEL_COLORS[l]+';color:#fff;border-color:'+LEVEL_COLORS[l]:''}" onclick="toggleChartLevel('${l}','${target}','${contract||''}')">${short}</button>`;
+    });
+    filtersDiv.innerHTML=fhtml;
+  }
+  let h=getHistory().filter(e=>e.target===target);
+  if(contract)h=h.filter(e=>(e.contract||getAntennaContract(e.target))===contract);
+  h.sort((a,b)=>sortDateAsc(a.date,b.date));
+  drawHistChart(h);
+}
+
+// ── Chart drawing (canvas line chart, respects level filters) ──
+function drawHistChart(entries){
+  const canvas=document.getElementById("histChart");
+  if(!canvas)return;
+  const dpr=window.devicePixelRatio||1;
+  const rect=canvas.parentElement.getBoundingClientRect();
+  canvas.width=rect.width*dpr;
+  canvas.height=260*dpr;
+  canvas.style.width=rect.width+"px";
+  canvas.style.height="260px";
+  const ctx=canvas.getContext("2d");
+  ctx.scale(dpr,dpr);
+  const W=rect.width,H=260;
+  const pad={t:20,r:20,b:50,l:50};
+  const cW=W-pad.l-pad.r,cH=H-pad.t-pad.b;
+
+  ctx.clearRect(0,0,W,H);
+
+  const n=entries.length;
+  if(n===0)return;
+
+  // Entries are already sorted ascending (oldest left → newest right)
+  const xStep=n>1?cW/(n-1):cW/2;
+  const xs=entries.map((_,i)=>pad.l+(n>1?i*xStep:cW/2));
+
+  // Y: find max count among active levels only
+  let maxVal=0;
+  entries.forEach(e=>{e.recap.forEach(r=>{if(chartActiveLevels.has(r.level)&&r.count>maxVal)maxVal=r.count})});
+  maxVal=Math.max(maxVal,10);
+  const yScale=cH/maxVal;
+  const yOf=v=>pad.t+cH-v*yScale;
+
+  // Grid lines
+  ctx.strokeStyle="#f3f4f6";ctx.lineWidth=1;
+  const gridSteps=5;
+  for(let i=0;i<=gridSteps;i++){
+    const y=pad.t+cH*i/gridSteps;
+    ctx.beginPath();ctx.moveTo(pad.l,y);ctx.lineTo(W-pad.r,y);ctx.stroke();
+    ctx.fillStyle="#9ca3af";ctx.font="10px system-ui";ctx.textAlign="right";
+    ctx.fillText(Math.round(maxVal*(1-i/gridSteps)),pad.l-6,y+3);
+  }
+
+  // X labels
+  ctx.textAlign="center";ctx.fillStyle="#6b7280";ctx.font="11px system-ui";
+  entries.forEach((e,i)=>{
+    ctx.fillText(e.date,xs[i],H-pad.b+18);
+    // Comment indicator
+    if(e.comment){
+      ctx.fillStyle="#7c3aed";ctx.font="bold 9px system-ui";
+      ctx.fillText("💬",xs[i],H-pad.b+32);
+      ctx.fillStyle="#6b7280";ctx.font="11px system-ui";
+    }
+  });
+
+  // Lines per active level only
+  ORDER_LEVELS.forEach(level=>{
+    if(!chartActiveLevels.has(level))return;
+    const color=LEVEL_COLORS[level];
+    const points=entries.map((e,i)=>{
+      const r=e.recap.find(r=>r.level===level);
+      return{x:xs[i],y:yOf(r?r.count:0),val:r?r.count:0};
+    });
+    // Line
+    ctx.strokeStyle=color;ctx.lineWidth=2.5;ctx.lineJoin="round";
+    ctx.beginPath();
+    points.forEach((p,i)=>{if(i===0)ctx.moveTo(p.x,p.y);else ctx.lineTo(p.x,p.y)});
+    ctx.stroke();
+    // Dots
+    points.forEach(p=>{
+      ctx.beginPath();ctx.arc(p.x,p.y,4,0,Math.PI*2);ctx.fillStyle=color;ctx.fill();
+      ctx.strokeStyle="#fff";ctx.lineWidth=1.5;ctx.stroke();
+    });
+    // Values on dots
+    ctx.fillStyle=color;ctx.font="bold 9px system-ui";ctx.textAlign="center";
+    points.forEach(p=>{
+      if(p.val>0)ctx.fillText(p.val,p.x,p.y-8);
+    });
+  });
+}
+
+// ── Compare ──
+function runCompare(){
+  const h=getHistory().filter(e=>e.target===histViewAntenna);
+  const aId=document.getElementById("cmpA")?.value;
+  const bId=document.getElementById("cmpB")?.value;
+  const a=h.find(e=>e.id===aId);
+  const b=h.find(e=>e.id===bId);
+  const div=document.getElementById("cmpResult");
+  if(!a||!b||!div)return;
+  if(a.id===b.id){div.innerHTML='<p style="color:#9ca3af;font-size:12px;margin-top:8px">Sélectionnez deux dates différentes.</p>';return}
+
+  let html='<table class="cr-table"><thead><tr><th>Niveau</th><th>'+a.date+'</th><th>'+b.date+'</th><th>Delta lignes</th><th>Delta %</th></tr></thead><tbody>';
+  ORDER_LEVELS.forEach(level=>{
+    const ra=a.recap.find(r=>r.level===level)||{count:0,pct:0};
+    const rb=b.recap.find(r=>r.level===level)||{count:0,pct:0};
+    const dc=rb.count-ra.count;
+    const dp=Math.round((rb.pct-ra.pct)*100)/100;
+    const dcCls=dc>0?"delta-pos":dc<0?"delta-neg":"";
+    const dpCls=dp>0?"delta-pos":dp<0?"delta-neg":"";
+    const dcStr=dc>0?"+"+dc:String(dc);
+    const dpStr=dp>0?"+"+dp.toFixed(2):dp.toFixed(2);
+    html+=`<tr><td style="color:${LEVEL_COLORS[level]}">${level}</td><td>${ra.count} (${ra.pct}%)</td><td>${rb.count} (${rb.pct}%)</td><td class="${dcCls}">${dcStr}</td><td class="${dpCls}">${dpStr} pts</td></tr>`;
+  });
+  // Total row
+  const dtot=b.total-a.total;
+  html+=`<tr style="background:#f9fafb;font-weight:700"><td>Total</td><td>${a.total}</td><td>${b.total}</td><td class="${dtot>0?'delta-pos':dtot<0?'delta-neg':''}">${dtot>0?'+'+dtot:dtot}</td><td></td></tr>`;
+  html+='</tbody></table>';
+
+  // Show comments if any
+  if(a.comment||b.comment){
+    html+='<div style="margin-top:8px;font-size:11px;color:#6b7280">';
+    if(a.comment)html+=`<div>📝 <strong>${a.date}</strong> : ${a.comment}</div>`;
+    if(b.comment)html+=`<div>📝 <strong>${b.date}</strong> : ${b.comment}</div>`;
+    html+='</div>';
+  }
+  div.innerHTML=html;
+}
+
+// ── Comments ──
+function editComment(entryId){
+  const h=getHistory();
+  const entry=h.find(e=>e.id===entryId);
+  if(!entry)return;
+  const val=prompt("Commentaire pour l'analyse du "+entry.date+" :\n(ex: Changement d'antenne, déplacement, incident réseau...)",entry.comment||"");
+  if(val===null)return;// cancelled
+  entry.comment=val.trim();
+  setHistory(h);
+  if(histViewAntenna)viewAntennaHistory(histViewAntenna,histViewAntennaContract);
+}
+
+function deleteEntry(entryId){
+  if(!confirm("Supprimer cette entrée de l'historique ?"))return;
+  let h=getHistory();
+  h=h.filter(e=>e.id!==entryId);
+  setHistory(h);
+  // Check if antenna still has entries
+  if(histViewAntenna&&h.some(e=>e.target===histViewAntenna)){
+    viewAntennaHistory(histViewAntenna,histViewAntennaContract);
+  }else if(histViewContract){viewContractAntennas(histViewContract)}
+  else{renderHistoryContracts()}
+}
+
+// ── Export / Import / Clear ──
+function exportHistory(){
+  // Same as saveSharedFile — downloads JSON
+  saveSharedFile();
+}
+
+async function reloadSharedHistory(){
+  const ok=await loadFromSharedFile();
+  if(ok){
+    alert("Historique rechargé ("+historyCache.length+" entrées).");
+  }
+  if(histViewAntenna&&historyCache.some(e=>e.target===histViewAntenna)){
+    viewAntennaHistory(histViewAntenna,histViewAntennaContract);
+  }else if(histViewContract){viewContractAntennas(histViewContract)}
+  else{renderHistoryContracts()}
+}
+
+function importHistory(event){
+  const file=event.target.files[0];
+  if(!file)return;
+  const reader=new FileReader();
+  reader.onload=e=>{
+    try{
+      const imported=JSON.parse(e.target.result);
+      if(!Array.isArray(imported))throw new Error("Format invalide");
+      const h=getHistory();
+      let added=0;
+      imported.forEach(entry=>{
+        if(!entry.target||!entry.date||!entry.recap)return;
+        // Avoid exact duplicates
+        const exists=h.some(e=>e.target===entry.target&&e.date===entry.date&&e.total===entry.total);
+        if(!exists){
+          if(!entry.id)entry.id=Date.now().toString(36)+Math.random().toString(36).slice(2,6);
+          h.push(entry);added++;
+        }
+      });
+      setHistory(h);
+      alert(added+" entrée(s) importée(s).");
+      renderHistoryContracts();
+    }catch(err){alert("Erreur d'import : "+err.message)}
+  };
+  reader.readAsText(file);
+  event.target.value="";
+}
+
+// Import from .xlsx export files (reads Recap sheet)
+async function importFromXlsx(event){
+  const files=Array.from(event.target.files||[]);
+  if(!files.length)return;
+  const h=getHistory();
+  let added=0,skipped=0,errors=[];
+
+  for(const file of files){
+    try{
+      // Use readPreviousAnalysis to parse the Recap sheet
+      const parsed=await readPreviousAnalysis(file);
+      const dateLabel=extractDateFromFilename(file.name);
+      if(!parsed.target){errors.push(file.name+" : antenne cible non trouvée");continue}
+
+      const entry={
+        id:Date.now().toString(36)+Math.random().toString(36).slice(2,8),
+        target:parsed.target,
+        lieu:parsed.lieu||"",
+        date:dateLabel||"??-??",
+        savedAt:new Date().toISOString(),
+        total:parsed.total,
+        globalMean:parsed.globalMean,
+        recap:parsed.recap.map(r=>({level:r.level,count:r.count,pct:r.pct,rssiMean:r.rssiMean})),
+        comment:""
+      };
+
+      // Check duplicate (same target + date + total)
+      const dup=h.findIndex(e=>e.target===entry.target&&e.date===entry.date);
+      if(dup>=0){
+        // Replace existing
+        h[dup]=entry;
+        added++;
+      }else{
+        h.push(entry);
+        added++;
+      }
+    }catch(err){
+      errors.push(file.name+" : "+err.message);
+    }
+  }
+
+  setHistory(h);
+  let msg=added+" analyse(s) importée(s) avec succès.";
+  if(errors.length)msg+="\n\n⚠ Erreurs ("+errors.length+") :\n"+errors.join("\n");
+  alert(msg);
+  if(added>0&&confirm("Voulez-vous télécharger le fichier partagé mis à jour maintenant ?")){
+    saveSharedFile();
+  }
+  renderHistoryContracts();
+  event.target.value="";
+}
+
+function clearAllHistory(){
+  if(!confirm("Êtes-vous sûr de vouloir supprimer TOUT l'historique local ? Cette action est irréversible.\n\nPensez à cliquer \"Enregistrer dans le fichier\" après pour mettre à jour le fichier partagé."))return;
+  historyCache=[];
+  localStorage.removeItem(HIST_KEY);
+  historyDirty=true;
+  updateSyncStatus("warn","Non synchronisé");
+  renderHistoryContracts();
+}
+
+document.addEventListener("DOMContentLoaded",()=>{
+  renderSteps();
+  setupFileDrop("drop1","input1","fname1",1);
+  setupFileDrop("drop2","input2","fname2",2);
+  renderTags();
+  document.getElementById("tagInput").addEventListener("keydown",e=>{if(e.key==="Enter"){e.preventDefault();addTag()}});
+  // Populate contract selector from CONTRACTS constant
+  const sel=document.getElementById("contractInput");
+  CONTRACTS.forEach(c=>{const opt=document.createElement("option");opt.value=c;opt.textContent=c;sel.appendChild(opt)});
+  // Load history from localStorage cache
+  loadFromCache();
+  if(historyCache.length>0){
+    updateSyncStatus("ok","Cache local ("+historyCache.length+")");
+  }else{
+    updateSyncStatus("warn","Aucun historique");
+  }
+});
+</script>
+</body>
+</html>
