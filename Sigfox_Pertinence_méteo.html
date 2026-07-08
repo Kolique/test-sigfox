@@ -349,6 +349,46 @@ function wmoText(code){return WMO_CODES[code]||"Inconnu"}
 function wmoIcon(code){return WMO_ICONS[code]||"❓"}
 function formatDate(d){const days=["Dimanche","Lundi","Mardi","Mercredi","Jeudi","Vendredi","Samedi"];const months=["janvier","février","mars","avril","mai","juin","juillet","août","septembre","octobre","novembre","décembre"];const dt=new Date(d+"T00:00:00");return days[dt.getDay()]+" "+dt.getDate()+" "+months[dt.getMonth()]+" "+dt.getFullYear()}
 
+// ── Timestamp helpers (used for the history date + weather) ──
+// Detect the timestamp column (case-insensitive, flexible naming)
+function findTimestampKey(data){
+  if(!data||!data.length)return null;
+  const keys=Object.keys(data[0]);
+  return keys.find(k=>k.toLowerCase()==="timestamp")
+    ||keys.find(k=>k.toLowerCase().includes("timestamp"))
+    ||keys.find(k=>k.toLowerCase().includes("date"))
+    ||keys.find(k=>k.toLowerCase().includes("time"))||null;
+}
+// Parse one cell into a Date, handling ISO/text, epoch seconds, epoch millis and Excel serial dates
+function parseCellDate(ts){
+  if(ts==null||ts==="")return null;
+  if(ts instanceof Date)return isNaN(ts.getTime())?null:ts;
+  let d;
+  const s=String(ts).trim();
+  if(typeof ts==="number"||/^\d+(\.\d+)?$/.test(s)){
+    const n=typeof ts==="number"?ts:parseFloat(s);
+    if(n>1e11)d=new Date(n);                              // epoch en millisecondes
+    else if(n>1e5)d=new Date(n*1000);                     // epoch en secondes
+    else d=new Date(Math.round((n-25569)*86400000));      // date série Excel
+  }else{
+    d=new Date(s);
+  }
+  return (d&&!isNaN(d.getTime()))?d:null;
+}
+// Latest date found in the timestamp column, or null
+function maxTimestampDate(data,tsKey){
+  tsKey=tsKey||findTimestampKey(data);
+  if(!tsKey||!data)return null;
+  let maxDate=null;
+  data.forEach(row=>{const d=parseCellDate(row[tsKey]);if(d&&(maxDate==null||d>maxDate))maxDate=d});
+  return maxDate;
+}
+// Date → "jj-mm" label used in the history
+function dateLabelFromDate(d){
+  if(!d)return null;
+  return String(d.getDate()).padStart(2,"0")+"-"+String(d.getMonth()+1).padStart(2,"0");
+}
+
 async function fetchWeather(city,endDate){
   // 1. Geocode city - try multiple name variants
   function cityVariants(name){
@@ -512,8 +552,9 @@ async function runBatchAnalysis(){
         const recap=ORDER_LEVELS.map(level=>{const rows=data.filter(r=>r["Pertinence"]===level);const vals=rows.map(r=>normRSSI(r[COLS.rssi1])).filter(v=>v!=null);const m=mean(vals);return{level,description:descs[level],count:rows.length,pct:data.length?Math.round(rows.length/data.length*10000)/100:0,rssiMean:m!=null?Math.round(m*100)/100:null}});
         const allR1=data.map(r=>normRSSI(r[COLS.rssi1])).filter(v=>v!=null);
         const gm=mean(allR1);
-        batchResults.push({id,total:data.length,globalMean:gm!=null?Math.round(gm*100)/100:null,recap,data});
-        addLog("  "+data.length+" lignes classifiées","success");
+        const dateLabel=dateLabelFromDate(maxTimestampDate(data));
+        batchResults.push({id,total:data.length,globalMean:gm!=null?Math.round(gm*100)/100:null,recap,data,dateLabel});
+        addLog("  "+data.length+" lignes classifiées"+(dateLabel?" (date "+dateLabel+")":" (date du jour)"),"success");
       }catch(e){addLog("  erreur : "+e.message,"error")}
     }
     addLog("Terminé — "+batchResults.length+"/"+ids.length+" antennes analysées.","success");
@@ -543,11 +584,12 @@ function renderBatchResults(){
   html+='<div class="summary-grid"><div class="summary-card"><div class="value">'+batchResults.length+'</div><div class="label">Antennes analysées</div></div>'
     +'<div class="summary-card sc-highlight"><div class="value">'+totLines+'</div><div class="label">Lignes au total</div></div>'
     +'<div class="summary-card"><div class="value">'+antennas.length+'</div><div class="label">Antennes du parc</div></div></div>';
-  html+='<div class="table-wrap"><table><thead><tr><th>Antenne</th>';
+  html+='<div class="table-wrap"><table><thead><tr><th>Antenne</th><th>Date</th>';
   ORDER_LEVELS.forEach(l=>{html+='<th class="right" style="color:'+LEVEL_COLORS[l]+'" title="'+l+'">'+l.replace("Pertinence ","P").replace("à déterminer","?")+'</th>'});
   html+='<th class="right">Total</th><th class="right">RSSI moy.</th><th class="center">Export</th></tr></thead><tbody>';
   batchResults.forEach(b=>{
     html+='<tr><td class="mono" style="font-weight:700">'+b.id+'</td>';
+    html+='<td class="mono">'+(b.dateLabel||'<span style="color:#9ca3af">jour</span>')+'</td>';
     ORDER_LEVELS.forEach(l=>{const r=b.recap.find(r=>r.level===l);const cnt=r?r.count:0;const pct=r?r.pct:0;html+='<td class="right">'+cnt+' <span style="color:#9ca3af;font-size:10px">('+pct+'%)</span></td>'});
     html+='<td class="right" style="font-weight:700">'+b.total+'</td>';
     html+='<td class="right mono">'+(b.globalMean??'—')+'</td>';
@@ -566,13 +608,14 @@ async function exportBatchOne(id){
 
 function saveAllToHistory(){
   if(!batchResults.length)return;
-  const dateLabel=new Date().toLocaleDateString("fr-FR",{day:"2-digit",month:"2-digit"}).replace("/","-");
+  const today=new Date().toLocaleDateString("fr-FR",{day:"2-digit",month:"2-digit"}).replace("/","-");
   const h=getHistory();
   let added=0,replaced=0;
   batchResults.forEach(b=>{
     const target=b.id;
     const contract=getAntennaContract(target)||"";
     const lieu=getAntennaLieu(target)||"";
+    const dateLabel=b.dateLabel||today;
     const entry={
       id:Date.now().toString(36)+Math.random().toString(36).slice(2,6),
       target,contract,lieu,date:dateLabel,
@@ -587,7 +630,7 @@ function saveAllToHistory(){
   setHistory(h);
   const btn=document.getElementById("btnSaveAll");
   if(btn){btn.classList.add("saved");btn.disabled=true;btn.innerHTML='<span class="saved-check" style="display:inline">✓ </span> Enregistré';setTimeout(()=>{btn.disabled=false},2000)}
-  alert(added+" antenne(s) enregistrée(s)"+(replaced?" ("+replaced+" remplacée(s))":"")+" dans l'historique à la date "+dateLabel+".\n\nLes antennes sans contrat apparaîtront dans « Antennes non assignées » de l'historique.");
+  alert(added+" antenne(s) enregistrée(s)"+(replaced?" ("+replaced+" remplacée(s))":"")+" dans l'historique (date issue du Timestamp de chaque fichier).\n\nLes antennes sans contrat apparaîtront dans « Antennes non assignées » de l'historique.");
   if(confirm("Voulez-vous télécharger le fichier partagé mis à jour maintenant ?")){saveSharedFile()}
 }
 function readXlsx(file){return new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=e=>{try{const wb=XLSX.read(new Uint8Array(e.target.result),{type:"array"});resolve(XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{defval:""}))}catch(err){reject(err)}};reader.onerror=()=>reject(new Error("Erreur lecture"));reader.readAsArrayBuffer(file)})}
@@ -729,34 +772,26 @@ async function runAnalysis(){
 
     addLog("Analyse terminée — "+data.length+" lignes classifiées.","success");
 
+    // ── Date de l'analyse : priorité à la colonne Timestamp du fichier ──
+    const tsKey=findTimestampKey(data);
+    if(tsKey)addLog("Colonne date détectée : "+tsKey);
+    const maxTs=maxTimestampDate(data,tsKey);
+    if(maxTs){
+      currentAnalysisDate=dateLabelFromDate(maxTs);
+      addLog("Date de l'analyse (Timestamp) : "+currentAnalysisDate,"success");
+    }else if(currentAnalysisDate){
+      addLog("Aucune date exploitable dans le Timestamp — date du nom de fichier utilisée : "+currentAnalysisDate,"warn");
+    }else{
+      addLog("Aucune date trouvée (Timestamp/nom de fichier) — la date du jour sera utilisée à l'enregistrement","warn");
+    }
+
     // ── Weather ──
     const city=document.getElementById("cityInput").value.trim();
     if(city){
       addLog("Récupération de la météo pour "+city+"...");
       try{
-        // Find the timestamp column (case-insensitive, flexible naming)
-        let tsKey=null;
-        if(data.length>0){
-          const keys=Object.keys(data[0]);
-          tsKey=keys.find(k=>k.toLowerCase()==="timestamp")
-            ||keys.find(k=>k.toLowerCase().includes("timestamp"))
-            ||keys.find(k=>k.toLowerCase().includes("date"))
-            ||keys.find(k=>k.toLowerCase().includes("time"));
-          if(tsKey)addLog("  Colonne date détectée : "+tsKey);
-        }
-        // Find latest date in data
-        let maxDate=null;
-        if(tsKey){
-          data.forEach(row=>{
-            const ts=row[tsKey];
-            if(ts==null||ts==="")return;
-            let d;
-            if(ts instanceof Date)d=ts;
-            else if(typeof ts==="number"){d=new Date(Math.round((ts-25569)*86400000))}
-            else{d=new Date(String(ts))}
-            if(d&&!isNaN(d.getTime())&&(maxDate==null||d>maxDate))maxDate=d;
-          });
-        }
+        // Réutilise la date détectée ci-dessus (repli sur la date du jour)
+        let maxDate=maxTs;
         if(!maxDate){
           maxDate=new Date();
           addLog("  Aucune date exploitable trouvée, utilisation de la date du jour","warn");
